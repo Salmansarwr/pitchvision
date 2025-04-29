@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from typing import Dict, Tuple, List
-from utils import is_color_dark, get_bbox_center, get_bbox_width
+from .utils import is_color_dark, get_bbox_center, get_bbox_width
 
 def draw_player_stats(
     frame: np.ndarray,

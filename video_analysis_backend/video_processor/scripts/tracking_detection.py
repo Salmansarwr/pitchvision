@@ -2,7 +2,7 @@ import supervision as sv
 from ultralytics import YOLO
 import numpy as np
 from typing import Tuple
-from team_classification import TeamClassifier
+from .team_classification import TeamClassifier
 
 track_history = {}  # Global dictionary to store tracking history
 

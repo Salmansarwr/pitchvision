@@ -5,5 +5,5 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('video_processor.urls')),
+    path('api/videos/', include('video_processor.urls')),  # Note the 'videos/' segment
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

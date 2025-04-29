@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from utils import is_color_dark, rgb_bgr_converter
+from .utils import is_color_dark, rgb_bgr_converter
 import cv2
 import numpy as np
 from scipy.spatial import Voronoi

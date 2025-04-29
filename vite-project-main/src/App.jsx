@@ -1,3 +1,4 @@
+/*
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
@@ -31,6 +32,19 @@ function App() {
         <Route path="*" element={<LandingPage />} />
       </Routes>
     </BrowserRouter>
+  );
+}
+
+export default App;
+*/
+import VideoUpload from './components/VideoUpload';
+
+function App() {
+  return (
+    <div>
+      <h1>Video Analysis App</h1>
+      <VideoUpload />
+    </div>
   );
 }
 
