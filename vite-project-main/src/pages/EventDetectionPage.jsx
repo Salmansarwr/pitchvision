@@ -78,7 +78,7 @@ function EventDistribution() {
   const COLORS = ['#3b82f6', '#e11d48', '#22c55e'];
   
   // Custom label renderer to ensure label visibility
-  const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name }) => {
+  const renderCustomizedLabel = ({ cx, cy, midAngle, outerRadius, percent, name }) => {
     const RADIAN = Math.PI / 180;
     // Position the label further from the pie to ensure visibility
     const radius = outerRadius * 1.2;

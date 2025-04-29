@@ -240,12 +240,13 @@ def main_processing(
     # Main processing phase
     print("Starting main video processing...")
     cap = cv2.VideoCapture(input_video_path)
+    # Use XVID codec for the temporary output - this is widely supported by OpenCV
     out_video = cv2.VideoWriter(
-        output_video_path,
-        cv2.VideoWriter_fourcc(*'mp4v'),
-        fps,
-        (canvas_width, canvas_height)
-    )
+    output_video_path,
+    cv2.VideoWriter_fourcc(*'avc1'),  # More universally supported codec
+    fps,
+    (canvas_width, canvas_height)
+)
 
     ball_positions = deque(maxlen=max_history)
     ball_confidences = deque(maxlen=max_history)
