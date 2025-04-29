@@ -24,9 +24,8 @@ def main_processing(
     summary_json_path,
     object_tracks_path,
     keypoint_tracks_path,
-    all_tracks_path,
     team_samples_dir,
-    field_image_path="input_videos/field_2d_v2.png",
+    field_image_path="media/input_videos/field_2d_v2.png",
     player_model_path="models/od.pt",
     keypoints_model_path="models/kd.pt",
     pixels_per_meter=10,
@@ -43,10 +42,37 @@ def main_processing(
     goal_overlay_duration=30,
     max_exit_frames=5
 ):
-    # Configuration
-    tracks_dir = os.path.join(output_dir, "tracks")
-    events_dir = os.path.join(output_dir, "events")
+    """
+    Main processing function that can be called from Django views.
     
+    Args:
+        input_video_path: Path to the input video file
+        output_dir: Directory for storing output files
+        output_video_path: Path for the annotated output video
+        summary_json_path: Path for the match summary JSON
+        object_tracks_path: Path for object tracks JSON
+        keypoint_tracks_path: Path for keypoint tracks JSON
+        team_samples_dir: Directory for team sample images
+        field_image_path: Path to the field image for projection view
+        player_model_path: Path to the YOLO model for player detection
+        keypoints_model_path: Path to the YOLO model for keypoint detection
+        pixels_per_meter: Conversion ratio from pixels to meters
+        max_history: Maximum history length for tracking
+        possession_distance_threshold: Threshold for determining ball possession
+        min_confidence_threshold: Minimum confidence for detections
+        smoothing_window: Window size for smoothing positions
+        team_classification_stride: Stride for team classification sampling
+        target_resolution: Target resolution for processing
+        player_detection_resolution: Resolution for player detection
+        keypoint_detection_resolution: Resolution for keypoint detection
+        canvas_width: Width of the output canvas
+        canvas_height: Height of the output canvas
+        goal_overlay_duration: Duration of goal overlay in frames
+        max_exit_frames: Maximum frames to exit goal detection state
+    
+    Returns:
+        bool: True if processing was successful, False otherwise
+    """
     # Class IDs
     BALL_CLASS_ID = 0
     GOALKEEPER_ID = 1
@@ -56,15 +82,20 @@ def main_processing(
     # Set device for GPU acceleration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
-
-    # Delete existing output directory and recreate it
+    
+    # Check if output directory exists and remove it if it does
     if os.path.exists(output_dir):
+       try:
         shutil.rmtree(output_dir)
         print(f"Removed existing output directory: {output_dir}")
+       except Exception as e:
+        print(f"Warning: Could not remove output directory: {e}")
 
-    # Create output directories
+
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(team_samples_dir, exist_ok=True)
+    tracks_dir = os.path.dirname(object_tracks_path)
+    events_dir = os.path.join(output_dir, "events")
     os.makedirs(tracks_dir, exist_ok=True)
     os.makedirs(events_dir, exist_ok=True)
     print(f"Created output directories: {output_dir}, {team_samples_dir}, {tracks_dir}, {events_dir}")
@@ -230,7 +261,7 @@ def main_processing(
         "possessions": [],
         "player_stats": {},
         "team_stats": {"Team A": {"possession": 0, "passes": 0, "possession_percentage": 0},
-                       "Team B": {"possession": 0, "passes": 0, "possession_percentage": 0}},
+                      "Team B": {"possession": 0, "passes": 0, "possession_percentage": 0}},
         "goals": []
     }
 
@@ -513,7 +544,6 @@ def main_processing(
         # Save tracking data to JSON
         json_writer.write_object_tracks(all_tracks[frame_idx]['object'])
         json_writer.write_keypoint_tracks(all_tracks[frame_idx]['keypoints'])
-        json_writer.write_all_tracks(all_tracks[frame_idx])
 
         # Draw annotations
         annotated = frame.copy()
@@ -554,7 +584,7 @@ def main_processing(
             for xyxy in ball_detections.xyxy:
                 x1, y1, x2, y2 = map(int, xyxy)
                 cx = (x1 + x2) // 2
-                cy = (y1 + y2) / 2
+                cy = (y1 + y2) // 2
                 cv2.circle(annotated, (cx, cy), 5, (0, 255, 255), -1)
                 cv2.ellipse(annotated, (cx, cy), (20, 10), 0, 0, 360, (255, 255, 0), 2)
                 pts = np.array([[cx, cy - 40], [cx - 15, cy - 70], [cx + 15, cy - 70]], np.int32)
@@ -592,7 +622,7 @@ def main_processing(
         # Apply goal overlay if active
         if display_goal_overlay:
             annotated = draw_goal_overlay(annotated, canvas_width, canvas_height, frame_counter=goal_frame_counter, total_duration=goal_overlay_duration)
-
+        
         # Annotate projection frame
         projection_frame_copy = projection_frame.copy()
         projection_frame_copy = projection_annotator.annotate(projection_frame_copy, all_tracks[frame_idx]['object'])
@@ -645,10 +675,10 @@ def main_processing(
 
     # Save match summary and tracks
     json_writer.write_summary(summary_data)
-    json_writer.write_all_tracks(all_tracks)
     print(f"📄 Match summary saved to '{summary_json_path}'")
     print(f"📄 Object tracks saved to '{object_tracks_path}'")
     print(f"📄 Keypoint tracks saved to '{keypoint_tracks_path}'")
-    print(f"📄 All tracks saved to '{all_tracks_path}'")
     print(f"📸 Team sample crops saved to '{team_samples_dir}'")
     print(f"📸 Event frames saved to '{events_dir}'")
+    
+    return True

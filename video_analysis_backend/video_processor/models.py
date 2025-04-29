@@ -9,7 +9,6 @@ class Video(models.Model):
     summary_json = models.FileField(upload_to='output/', null=True, blank=True)
     object_tracks_json = models.FileField(upload_to='output/tracks/', null=True, blank=True)
     keypoint_tracks_json = models.FileField(upload_to='output/tracks/', null=True, blank=True)
-    all_tracks_json = models.FileField(upload_to='output/tracks/', null=True, blank=True)
 
     def __str__(self):
         return f"Video {self.id} - {self.video_file.name}"

@@ -143,7 +143,7 @@ class ObjectPositionMapper(AbstractMapper):
             for track_id, track_info in object_data.items():
                 if not isinstance(track_info, dict) or 'bbox' not in track_info:
                     continue
-                from utils import get_feet_pos
+                from .utils import get_feet_pos
                 bbox = track_info['bbox']
                 feet_pos = get_feet_pos(bbox)
                 try:

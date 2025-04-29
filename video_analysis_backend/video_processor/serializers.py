@@ -7,14 +7,13 @@ class VideoSerializer(serializers.ModelSerializer):
     summary_json_url = serializers.SerializerMethodField()
     object_tracks_json_url = serializers.SerializerMethodField()
     keypoint_tracks_json_url = serializers.SerializerMethodField()
-    all_tracks_json_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Video
         fields = [
             'id', 'video_file', 'uploaded_at', 'status',
             'output_video_url', 'summary_json_url',
-            'object_tracks_json_url', 'keypoint_tracks_json_url', 'all_tracks_json_url'
+            'object_tracks_json_url', 'keypoint_tracks_json_url'
         ]
         read_only_fields = ['id', 'uploaded_at', 'status']
 
@@ -29,6 +28,3 @@ class VideoSerializer(serializers.ModelSerializer):
 
     def get_keypoint_tracks_json_url(self, obj):
         return obj.keypoint_tracks_json.url if obj.keypoint_tracks_json else None
-
-    def get_all_tracks_json_url(self, obj):
-        return obj.all_tracks_json.url if obj.all_tracks_json else None

@@ -73,11 +73,6 @@ const VideoUpload = () => {
               Keypoint Tracks
             </a>
           </p>
-          <p>
-            <a href={results.allTracks} target="_blank" rel="noopener noreferrer">
-              All Tracks
-            </a>
-          </p>
         </div>
       )}
     </div>
