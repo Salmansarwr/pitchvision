@@ -1,7 +1,9 @@
-// src/pages/Dashboard.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import Layout from '../components/shared/Layout';
 import axios from 'axios';
+
+// Configuration for API calls
+const API_BASE_URL = 'http://127.0.0.1:8000'; // Change this for production
 
 function Dashboard() {
   // Video processing states
@@ -14,6 +16,9 @@ function Dashboard() {
   const fileInputRef = useRef(null);
   const [selectedVideo, setSelectedVideo] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [videoError, setVideoError] = useState(null);
+  const [matchStats, setMatchStats] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState('Team A'); // Toggle state for team selection
 
   // Check status periodically when videoId exists and status is processing
   useEffect(() => {
@@ -23,6 +28,22 @@ function Dashboard() {
     }
     return () => clearInterval(interval);
   }, [videoId, status]);
+
+  // Fetch match summary data when results are available
+  useEffect(() => {
+    if (results?.summary && status === 'completed') {
+      const fetchMatchSummary = async () => {
+        try {
+          const response = await axios.get(results.summary);
+          setMatchStats(response.data);
+        } catch (error) {
+          console.error('Failed to fetch match summary:', error);
+          setMatchStats(null);
+        }
+      };
+      fetchMatchSummary();
+    }
+  }, [results, status]);
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -56,12 +77,16 @@ function Dashboard() {
         });
       }, 500);
 
+      console.log('Uploading to:', `${API_BASE_URL}/api/videos/`);
+      
       // Make direct axios call
-      const response = await axios.post('http://127.0.0.1:8000/api/videos/', formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/videos/`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
+
+      console.log('Upload response:', response.data);
 
       clearInterval(progressInterval);
       setUploadProgress(100);
@@ -79,22 +104,69 @@ function Dashboard() {
 
   const checkStatus = async (id) => {
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/videos/${id}/`);
+      console.log(`Checking status for video ${id} at ${API_BASE_URL}/api/videos/${id}/`);
+      
+      const response = await axios.get(`${API_BASE_URL}/api/videos/${id}/`);
+      console.log('Status response:', response.data);
+      
       setStatus(response.data.status);
 
       if (response.data.status === 'completed') {
+        // Log all URLs for debugging
+        console.log('Output Video URL:', response.data.output_video_url);
+        console.log('Summary JSON URL:', response.data.summary_json_url);
+        console.log('Object Tracks URL:', response.data.object_tracks_json_url);
+        console.log('Keypoint Tracks URL:', response.data.keypoint_tracks_json_url);
+        
+        // Ensure all URLs are absolute
+        const ensureAbsoluteUrl = (url) => {
+          if (!url) return null;
+          return url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+        };
+        
         setResults({
-          outputVideo: response.data.output_video_url,
-          summary: response.data.summary_json_url,
-          objectTracks: response.data.object_tracks_json_url,
-          keypointTracks: response.data.keypoint_tracks_json_url,
+          outputVideo: ensureAbsoluteUrl(response.data.output_video_url),
+          summary: ensureAbsoluteUrl(response.data.summary_json_url),
+          objectTracks: ensureAbsoluteUrl(response.data.object_tracks_json_url),
+          keypointTracks: ensureAbsoluteUrl(response.data.keypoint_tracks_json_url),
         });
-        console.log('Output Video URL:', response.data.output_video_url); // Debug URL
+        
+        // Log the processed URLs
+        console.log('Processed output video URL:', ensureAbsoluteUrl(response.data.output_video_url));
       }
     } catch (error) {
       console.error('Status check failed:', error);
       setStatus('failed');
     }
+  };
+
+  // Function to manually test the video playback
+  const testVideoPlayback = () => {
+    if (!results || !results.outputVideo) {
+      console.error('No video URL available to test');
+      return;
+    }
+    
+    console.log('Testing video playback from URL:', results.outputVideo);
+    
+    // Create a temporary video element to test loading
+    const testVideo = document.createElement('video');
+    testVideo.muted = true;
+    
+    // Log loading events
+    testVideo.addEventListener('loadstart', () => console.log('Video loading started'));
+    testVideo.addEventListener('canplay', () => console.log('Video can play - format is supported'));
+    testVideo.addEventListener('canplaythrough', () => console.log('Video can play through without buffering'));
+    
+    // Handle errors
+    testVideo.addEventListener('error', () => {
+      console.error('Video load error:', testVideo.error);
+      setVideoError(`Error loading video: ${testVideo.error?.message || 'Unknown error'}`);
+    });
+    
+    // Set source and attempt to load
+    testVideo.src = results.outputVideo;
+    testVideo.load();
   };
 
   const renderUploadSection = () => (
@@ -110,7 +182,7 @@ function Dashboard() {
           <input
             type="text"
             value={selectedVideo}
-            readOnly
+            read BMJ to read-only
             placeholder="Select a match video"
             className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             onClick={() => setShowDropdown(!showDropdown)}
@@ -190,6 +262,33 @@ function Dashboard() {
     </div>
   );
 
+  const renderTeamToggle = () => {
+    if (status !== 'completed' || !results || !matchStats) return null;
+
+    return (
+      <div className="mt-4 flex justify-center">
+        <div className="bg-gray-700 rounded-full p-1 flex">
+          <button
+            className={`px-4 py-2 rounded-full ${
+              selectedTeam === 'Team A' ? 'bg-cyan-600 text-white' : 'text-gray-300'
+            }`}
+            onClick={() => setSelectedTeam('Team A')}
+          >
+            Team A
+          </button>
+          <button
+            className={`px-4 py-2 rounded-full ${
+              selectedTeam === 'Team B' ? 'bg-cyan-600 text-white' : 'text-gray-300'
+            }`}
+            onClick={() => setSelectedTeam('Team B')}
+          >
+            Team B
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderProcessingStatus = () => {
     if (status === 'idle' || status === 'completed') return null;
 
@@ -232,9 +331,10 @@ function Dashboard() {
     );
   };
 
-  // Sample player data for the visualization
+  // Sample player data for the visualization, including player 1
   const renderPlayers = () => {
     const players = [
+      { id: 1, x: '40%', y: '70%', team: 'a' },
       { id: 10, x: '50%', y: '75%', team: 'a' },
       { id: 7, x: '30%', y: '60%', team: 'a' },
       { id: 9, x: '60%', y: '85%', team: 'a' },
@@ -300,6 +400,9 @@ function Dashboard() {
           <div className="absolute top-2/5 left-3/5 h-40 w-40 bg-red-500 rounded-full opacity-30 blur-lg transform -translate-x-1/2 -translate-y-1/4"></div>
           <div className="absolute top-1/2 left-2/3 h-44 w-44 bg-red-500 rounded-full opacity-40 blur-lg transform -translate-x-1/2 -translate-y-1/2"></div>
           <div className="absolute top-3/5 left-3/4 h-36 w-36 bg-red-500 rounded-full opacity-25 blur-lg transform -translate-x-1/2 -translate-y-1/2"></div>
+
+          {/* Players */}
+          {renderPlayers()}
         </div>
       );
     } else if (activeTab === 'passes') {
@@ -396,71 +499,70 @@ function Dashboard() {
     }
   };
 
+  // Update the video rendering section to cover full width with 1920x1080 resolution and 16:9 aspect ratio
+  const renderProcessedVideo = () => {
+    if (!results?.outputVideo) return null;
+    
+    return (
+      <div className="mt-4">
+        <h3 className="text-white text-lg font-medium mb-2">Processed Video</h3>
+        <div className="relative w-full mx-auto">
+          <video
+            key={results.outputVideo}
+            src={results.outputVideo}
+            controls
+            className="w-full rounded-lg aspect-[16/9]"
+            width="1920"
+            height="1080"
+            autoPlay
+            onError={(e) => {
+              console.error('Video playback error:', e.target.error);
+              setVideoError(`Error playing video: ${e.target.error?.message || 'Unknown error'}`);
+            }}
+            onLoadedData={() => {
+              console.log('Video loaded successfully');
+              setVideoError(null);
+            }}
+          />
+          
+          {videoError && (
+            <div className="mt-2 p-3 bg-red-900 bg-opacity-70 rounded text-white">
+              {videoError}
+              <div className="mt-2">
+                <p>Video URL: {results.outputVideo}</p>
+                <button 
+                  onClick={testVideoPlayback}
+                  className="px-3 py-1 bg-blue-600 rounded mt-1 text-sm"
+                >
+                  Test Video URL
+                </button>
+                <a 
+                  href={results.outputVideo} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 bg-green-600 rounded mt-1 ml-2 text-sm inline-block"
+                >
+                  Open Video in New Tab
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderTrackingView = () => (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden h-full flex flex-col mt-4">
       <div className="px-4 py-3 bg-gray-700 bg-opacity-50 flex justify-between items-center">
         <h2 className="text-gray-400 font-semibold">
           {status === 'completed' ? 'MATCH ANALYSIS' : 'LIVE TRACKING VIEW'}
         </h2>
-        <div className="flex space-x-2">
-          <button className="p-1 bg-gray-700 rounded-full">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6 text-white"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-          </button>
-          <button className="p-1 bg-gray-700 rounded-full">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6 text-white"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-          </button>
-        </div>
       </div>
 
       <div className="p-4 flex-grow flex flex-col justify-center overflow-auto custom-scrollbar">
         {status === 'completed' && results?.outputVideo ? (
-          <div className="relative w-full rounded-lg">
-            <video
-              src={results.outputVideo}
-              controls
-              className="w-full rounded-lg"
-              autoPlay
-              onError={(e) => {
-                console.error('Video playback error:', e);
-                alert('Failed to load the output video. Please check the URL or try again.');
-              }}
-            />
-            <div className="absolute inset-0 items-center justify-center bg-gray-800 bg-opacity-50 text-white text-sm hidden">
-              Video not available
-            </div>
-          </div>
+          renderProcessedVideo()
         ) : (
           renderPitchView()
         )}
@@ -507,16 +609,38 @@ function Dashboard() {
     </div>
   );
 
-  // Dashboard metrics (Total Distance, Top Speed, Passes, Possession)
+  // Dashboard metrics with team toggle
   const renderDashboardMetrics = () => {
-    if (status !== 'completed' || !results) return null;
+    if (status !== 'completed' || !results || !matchStats) return null;
+
+    // Calculate metrics for the selected team
+    const totalDistance = matchStats.player_stats
+      ? Object.entries(matchStats.player_stats).reduce((sum, [ , stats]) => {
+          return stats.team === selectedTeam ? sum + (stats.total_distance_m || 0) : sum;
+        }, 0) / 1000 // Convert to km
+      : null;
+      
+
+    const topSpeed = matchStats.rankings?.max_speed?.length
+      ? Math.max(
+          ...matchStats.rankings.max_speed
+            .filter((entry) => entry.team === selectedTeam)
+            .map((entry) => entry.speed_kmph || 0)
+        )
+      : null;
+
+    const totalPasses = matchStats.team_stats?.[selectedTeam]?.passes || null;
+
+    const possession = matchStats.team_stats?.[selectedTeam]?.possession_percentage || null;
 
     return (
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-gray-800 rounded-lg p-4 shadow flex items-center justify-between">
           <div>
             <div className="text-gray-400 text-sm">Total Distance</div>
-            <div className="text-white text-2xl font-bold">112.4 km</div>
+            <div className="text-white text-2xl font-bold">
+              {totalDistance ? `${totalDistance.toFixed(1)} km` : 'Data Not Available'}
+            </div>
           </div>
           <div className="h-12 w-12 bg-blue-500 bg-opacity-30 rounded-full flex items-center justify-center">
             <svg
@@ -539,7 +663,9 @@ function Dashboard() {
         <div className="bg-gray-800 rounded-lg p-4 shadow flex items-center justify-between">
           <div>
             <div className="text-gray-400 text-sm">Top Speed</div>
-            <div className="text-white text-2xl font-bold">34.8 km/h</div>
+            <div className="text-white text-2xl font-bold">
+              {topSpeed ? `${topSpeed.toFixed(1)} km/h` : 'Data Not Available'}
+            </div>
           </div>
           <div className="h-12 w-12 bg-purple-500 bg-opacity-30 rounded-full flex items-center justify-center">
             <svg
@@ -562,7 +688,9 @@ function Dashboard() {
         <div className="bg-gray-800 rounded-lg p-4 shadow flex items-center justify-between">
           <div>
             <div className="text-gray-400 text-sm">Passes</div>
-            <div className="text-white text-2xl font-bold">542</div>
+            <div className="text-white text-2xl font-bold">
+              {totalPasses ? totalPasses : 'Data Not Available'}
+            </div>
           </div>
           <div className="h-12 w-12 bg-green-500 bg-opacity-30 rounded-full flex items-center justify-center">
             <svg
@@ -585,7 +713,9 @@ function Dashboard() {
         <div className="bg-gray-800 rounded-lg p-4 shadow flex items-center justify-between">
           <div>
             <div className="text-gray-400 text-sm">Possession</div>
-            <div className="text-white text-2xl font-bold">63%</div>
+            <div className="text-white text-2xl font-bold">
+              {possession ? `${possession.toFixed(1)}%` : 'Data Not Available'}
+            </div>
           </div>
           <div className="h-12 w-12 bg-yellow-500 bg-opacity-30 rounded-full flex items-center justify-center">
             <svg
@@ -614,9 +744,9 @@ function Dashboard() {
 
     return (
       <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gray-800 rounded-lg shadow-lg p-4">
+        <div className="bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col min-h-[200px]">
           <h3 className="text-gray-400 font-semibold mb-3">MATCH REPORTS</h3>
-          <div className="space-y-3">
+          <div className="space-y-3 flex-grow">
             <a
               href={results.summary}
               target="_blank"
@@ -639,7 +769,6 @@ function Dashboard() {
               </svg>
               <span className="text-white">Match Summary Report</span>
             </a>
-
             <a
               href={results.objectTracks}
               target="_blank"
@@ -662,7 +791,6 @@ function Dashboard() {
               </svg>
               <span className="text-white">Object Tracking Data</span>
             </a>
-
             <a
               href={results.keypointTracks}
               target="_blank"
@@ -687,26 +815,46 @@ function Dashboard() {
             </a>
           </div>
         </div>
-
-        <div className="md:col-span-2 bg-gray-800 rounded-lg shadow-lg p-4">
+        <div className="md:col-span-2 bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col min-h-[200px]">
           <h3 className="text-gray-400 font-semibold mb-3">MATCH EVENTS</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 <%= locals.user ? 'gap-4' : '' %>">
-            <div className="bg-gray-700 bg-opacity-30 rounded-lg p-3">
-              <div className="flex items-center mb-2">
-                <div className="h-3 w-3 rounded-full bg-blue-600 mr-2"></div>
-                <span className="text-white font-medium">Team A Goals: 2</span>
+          {matchStats?.goals?.length ? (
+            <div className="flex flex-col gap-4 flex-grow">
+              <div className="bg-gray-700 bg-opacity-30 rounded-lg p-3">
+                <div className="flex items-center mb-2">
+                  <div className="h-3 w-3 rounded-full bg-blue-600 mr-2"></div>
+                  <span className="text-white font-medium">
+                    Team A Goals: {matchStats.goals.filter(g => g.team === 'Team A').length}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-400">
+                  {matchStats.goals.filter(g => g.team === 'Team A').length
+                    ? matchStats.goals
+                        .filter(g => g.team === 'Team A')
+                        .map((goal) => `${Math.floor(goal.frame / 60)}' - Player Unknown`)
+                        .join(', ')
+                    : 'No goals scored'}
+                </div>
               </div>
-              <div className="text-sm text-gray-400">5' - Player #10 • 62' - Player #9</div>
-            </div>
-
-            <div className="bg-gray-700 bg-opacity-30 rounded-lg p-3">
-              <div className="flex items-center mb-2">
-                <div className="h-3 w-3 rounded-full bg-pink-600 mr-2"></div>
-                <span className="text-white font-medium">Team B Goals: 1</span>
+              <div className="bg-gray-700 bg-opacity-30 rounded-lg p-3">
+                <div className="flex items-center mb-2">
+                  <div className="h-3 w-3 rounded-full bg-pink-600 mr-2"></div>
+                  <span className="text-white font-medium">
+                    Team B Goals: {matchStats.goals.filter(g => g.team === 'Team B').length}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-400">
+                  {matchStats.goals.filter(g => g.team === 'Team B').length
+                    ? matchStats.goals
+                        .filter(g => g.team === 'Team B')
+                        .map((goal) => `${Math.floor(goal.frame / 60)}' - Player Unknown`)
+                        .join(', ')
+                    : 'No goals scored'}
+                </div>
               </div>
-              <div className="text-sm text-gray-400">18' - Player #11</div>
             </div>
-          </div>
+          ) : (
+            <div className="text-gray-400 text-sm flex-grow">Match events data not available</div>
+          )}
         </div>
       </div>
     );
@@ -714,12 +862,11 @@ function Dashboard() {
 
   return (
     <Layout title="Dashboard">
-      {renderDashboardMetrics()}
-
-      {/* Video Processing Section */}
       <div className="mt-4">
         {renderUploadSection()}
         {renderProcessingStatus()}
+        {renderTeamToggle()}
+        {renderDashboardMetrics()}
         {renderTrackingView()}
         {renderResultsSection()}
       </div>

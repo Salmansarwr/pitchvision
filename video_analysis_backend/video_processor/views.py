@@ -6,7 +6,7 @@ from rest_framework import status
 from .models import Video
 from .serializers import VideoSerializer
 import threading
-from .scripts.main import main_processing  # We'll create this wrapper
+from .scripts.main import main_processing
 
 class VideoUploadView(APIView):
     def post(self, request):
@@ -27,15 +27,18 @@ class VideoUploadView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get(self, request, pk=None):
+        print(f"GET request received with pk={pk}")  # Debug log
         if pk:
             try:
                 video = Video.objects.get(pk=pk)
-                serializer = VideoSerializer(video)
+                serializer = VideoSerializer(video, context={'request': request})
                 return Response(serializer.data)
             except Video.DoesNotExist:
                 return Response({'error': 'Video not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # List all videos if no pk is provided
         videos = Video.objects.all()
-        serializer = VideoSerializer(videos, many=True)
+        serializer = VideoSerializer(videos, many=True, context={'request': request})
         return Response(serializer.data)
 
 def process_video(video_instance):
