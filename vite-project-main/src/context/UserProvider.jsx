@@ -1,3 +1,4 @@
+// src/context/UserProvider.jsx
 import { useState, useEffect } from 'react';
 import { UserContext } from './UserContext';
 import axios from 'axios';
@@ -170,6 +171,8 @@ export const UserProvider = ({ children }) => {
         updateVideoData,
         updateVideoId,
         loading,
+        setUser, // Added
+        setProfile, // Added
       }}
     >
       {children}

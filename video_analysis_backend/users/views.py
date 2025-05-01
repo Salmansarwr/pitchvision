@@ -5,6 +5,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Profile
+import re
 
 class SignInView(APIView):
     def post(self, request):
@@ -92,5 +93,58 @@ class SignUpView(APIView):
                     'email': email
                 }
             }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class ProfileUpdateView(APIView):
+    def put(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            return Response({'message': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        first_name = request.data.get('first_name')
+        last_name = request.data.get('last_name')
+        phone_number = request.data.get('phone_number')
+        experience_level = request.data.get('experience_level')
+        
+        # Validate all fields
+        if not all([first_name, last_name, phone_number, experience_level]):
+            return Response({'message': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if experience_level not in ['Beginner', 'Enthusiast', 'Pro']:
+            return Response({'message': 'Invalid experience level'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Basic phone number validation (e.g., contains only digits, +, -, spaces, 7-15 characters)
+        if not re.match(r'^[\d\s+-]{7,15}$', phone_number):
+            return Response({'message': 'Invalid phone number format'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Fetch profile first
+            profile = Profile.objects.get(user=user)
+            
+            # Update User model
+            user.first_name = first_name
+            user.last_name = last_name
+            user.save()
+            
+            # Update Profile model
+            profile.phone_number = phone_number
+            profile.experience_level = experience_level
+            profile.save()
+            
+            return Response({
+                'message': 'Profile updated successfully',
+                'user': {
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'email': user.email,
+                    'last_login': user.last_login,
+                    'phone_number': profile.phone_number,
+                    'experience_level': profile.experience_level,
+                    'created_at': profile.created_at
+                }
+            }, status=status.HTTP_200_OK)
+        except Profile.DoesNotExist:
+            return Response({'message': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
