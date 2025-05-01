@@ -14,6 +14,7 @@ function Dashboard() {
   const [status, setStatus] = useState('idle'); // 'idle', 'uploading', 'processing', 'completed', 'failed'
   const [results, setResults] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const {updateVideoId } = useContext(UserContext);
   const [activeTab, setActiveTab] = useState('live'); // 'live', 'heatmap', 'passes', 'paths'
   const fileInputRef = useRef(null);
   const [selectedVideo, setSelectedVideo] = useState('');
@@ -60,15 +61,15 @@ function Dashboard() {
 
   const handleUpload = async () => {
     if (!file) return;
-
+  
     try {
       setStatus('uploading');
       setUploadProgress(0);
-
+  
       // Create form data
       const formData = new FormData();
       formData.append('video_file', file);
-
+  
       // Simulating upload progress
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => {
@@ -79,24 +80,27 @@ function Dashboard() {
           return prev + 5;
         });
       }, 500);
-
+  
       console.log('Uploading to:', `${API_BASE_URL}/api/videos/`);
-      
-      // Make direct axios call
+  
+      // Make axios call with authentication
+      const token = localStorage.getItem('token');
       const response = await axios.post(`${API_BASE_URL}/api/videos/`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}`,
         },
       });
-
+  
       console.log('Upload response:', response.data);
-
+  
       clearInterval(progressInterval);
       setUploadProgress(100);
-
+  
       setVideoId(response.data.id);
+      updateVideoId(response.data.id); // Update UserContext videoId
       setStatus(response.data.status);
-
+  
       // Start checking status
       checkStatus(response.data.id);
     } catch (error) {

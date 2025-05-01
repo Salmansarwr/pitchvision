@@ -1,4 +1,3 @@
-// src/context/UserProvider.jsx
 import { useState, useEffect } from 'react';
 import { UserContext } from './UserContext';
 import axios from 'axios';
@@ -89,8 +88,10 @@ export const UserProvider = ({ children }) => {
   useEffect(() => {
     if (videoId) {
       localStorage.setItem('videoId', JSON.stringify(videoId));
+      console.log('Saved videoId to localStorage:', videoId);
     } else {
       localStorage.removeItem('videoId');
+      console.log('Removed videoId from localStorage');
     }
   }, [videoId]);
 
@@ -100,10 +101,12 @@ export const UserProvider = ({ children }) => {
       const fetchVideoDetails = async () => {
         try {
           const token = localStorage.getItem('token');
+          console.log(`Fetching video details for videoId: ${videoId}`);
           const response = await axios.get(`http://127.0.0.1:8000/api/videos/${videoId}/`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (response.status === 200) {
+            console.log('Video details fetched:', response.data);
             setVideoData(response.data);
           } else {
             console.error('Failed to fetch video details:', response.data);
@@ -149,14 +152,37 @@ export const UserProvider = ({ children }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('profile');
+    localStorage.removeItem('videoId');
+    console.log('Logged out, cleared videoId');
   };
 
   const updateVideoData = (data) => {
     setVideoData(data);
+    console.log('Updated videoData:', data);
   };
 
-  const updateVideoId = (id) => {
-    setVideoId(id);
+  const updateVideoId = async (id) => {
+    console.log(`updateVideoId called with id: ${id}`);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No token found, cannot validate video ID');
+        return;
+      }
+      // Validate the video ID by checking its status
+      const response = await axios.get(`http://127.0.0.1:8000/api/videos/${id}/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log('Video validation response:', response.data);
+      if (response.data.status === 'completed') {
+        setVideoId(id);
+        console.log(`Video ID updated to ${id} (status: completed)`);
+      } else {
+        console.warn(`Video ID ${id} is not completed (status: ${response.data.status}), not updating`);
+      }
+    } catch (error) {
+      console.error(`Failed to validate video ID ${id}:`, error);
+    }
   };
 
   return (
@@ -171,8 +197,8 @@ export const UserProvider = ({ children }) => {
         updateVideoData,
         updateVideoId,
         loading,
-        setUser, // Added
-        setProfile, // Added
+        setUser,
+        setProfile,
       }}
     >
       {children}
