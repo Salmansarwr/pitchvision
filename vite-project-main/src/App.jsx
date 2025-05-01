@@ -1,5 +1,7 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import React, { useContext } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { UserContext } from './context/UserContext';
+import { UserProvider } from './context/UserProvider'; // Updated import
 import Dashboard from './pages/Dashboard';
 import SignupPage from './pages/SignupPage';
 import SignInPage from './pages/SignInPage';
@@ -13,24 +15,75 @@ import ContactPage from './pages/ContactPage';
 import LandingPage from './pages/LandingPage';
 import './scrollbar.css';
 
+// ProtectedRoute component to guard authenticated routes
+const ProtectedRoute = ({ children }) => {
+  const { user } = useContext(UserContext);
+  const token = localStorage.getItem('token');
+  return user && token ? children : <Navigate to="/login" replace />;
+};
+
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/login" element={<SignInPage />} />
-        <Route path="/player-tracking" element={<PlayerTrackingPage />} />
-        <Route path="/event-detection" element={<EventDetectionPage />} />
-        <Route path="/tactical-analysis" element={<TacticalAnalysisPage />} />
-        <Route path="/match-reports" element={<MatchReportsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="/contact" element={<ContactPage />} />
-        <Route path="*" element={<LandingPage />} />
-      </Routes>
-    </BrowserRouter>
+    <UserProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/login" element={<SignInPage />} />
+          <Route
+            path="/player-tracking"
+            element={
+              <ProtectedRoute>
+                <PlayerTrackingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/event-detection"
+            element={
+              <ProtectedRoute>
+                <EventDetectionPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tactical-analysis"
+            element={
+              <ProtectedRoute>
+                <TacticalAnalysisPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/match-reports"
+            element={
+              <ProtectedRoute>
+                <MatchReportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="*" element={<LandingPage />} />
+        </Routes>
+      </BrowserRouter>
+    </UserProvider>
   );
 }
 
