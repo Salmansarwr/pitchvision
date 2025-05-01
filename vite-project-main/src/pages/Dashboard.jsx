@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import Layout from '../components/shared/Layout';
 import { UserContext } from '../context/UserContext';
 import axios from 'axios';
+import { Link } from 'react-router-dom'; // Added for navigation
 
 // Configuration for API calls
 const API_BASE_URL = 'http://127.0.0.1:8000'; // Change this for production
@@ -98,7 +99,7 @@ function Dashboard() {
       setUploadProgress(100);
   
       setVideoId(response.data.id);
-      updateVideoId(response.data.id); // Update UserContext videoId
+      updateVideoId(response.data.id, false); // Update UserContext videoId
       setStatus(response.data.status);
   
       // Start checking status
@@ -189,7 +190,7 @@ function Dashboard() {
           <input
             type="text"
             value={selectedVideo}
-            read BMJ to read-only
+            readOnly
             placeholder="Select a match video"
             className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             onClick={() => setShowDropdown(!showDropdown)}
@@ -752,10 +753,8 @@ function Dashboard() {
         <div className="bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col min-h-[200px]">
           <h3 className="text-gray-400 font-semibold mb-3">MATCH REPORTS</h3>
           <div className="space-y-3 flex-grow">
-            <a
-              href={results.summary}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              to="/match-reports"
               className="block px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition items-center"
             >
               <svg
@@ -773,11 +772,9 @@ function Dashboard() {
                 />
               </svg>
               <span className="text-white">Match Summary Report</span>
-            </a>
-            <a
-              href={results.objectTracks}
-              target="_blank"
-              rel="noopener noreferrer"
+            </Link>
+            <Link
+              to="/player-tracking"
               className="block px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition items-center"
             >
               <svg
@@ -795,11 +792,9 @@ function Dashboard() {
                 />
               </svg>
               <span className="text-white">Object Tracking Data</span>
-            </a>
-            <a
-              href={results.keypointTracks}
-              target="_blank"
-              rel="noopener noreferrer"
+            </Link>
+            <Link
+              to="/player-tracking"
               className="block px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition items-center"
             >
               <svg
@@ -817,7 +812,7 @@ function Dashboard() {
                 />
               </svg>
               <span className="text-white">Keypoint Data</span>
-            </a>
+            </Link>
           </div>
         </div>
         <div className="md:col-span-2 bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col min-h-[200px]">

@@ -161,14 +161,17 @@ export const UserProvider = ({ children }) => {
     console.log('Updated videoData:', data);
   };
 
-  const updateVideoId = async (id) => {
-    console.log(`updateVideoId called with id: ${id}`);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.error('No token found, cannot validate video ID');
-        return;
-      }
+  // In UserProvider.jsx, modify the updateVideoId function:
+const updateVideoId = async (id, validateStatus = true) => {
+  console.log(`updateVideoId called with id: ${id}, validateStatus: ${validateStatus}`);
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.error('No token found, cannot validate video ID');
+      return;
+    }
+    
+    if (validateStatus) {
       // Validate the video ID by checking its status
       const response = await axios.get(`http://127.0.0.1:8000/api/videos/${id}/`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -180,10 +183,15 @@ export const UserProvider = ({ children }) => {
       } else {
         console.warn(`Video ID ${id} is not completed (status: ${response.data.status}), not updating`);
       }
-    } catch (error) {
-      console.error(`Failed to validate video ID ${id}:`, error);
+    } else {
+      // Set videoId without validation
+      setVideoId(id);
+      console.log(`Video ID updated to ${id} without validation`);
     }
-  };
+  } catch (error) {
+    console.error(`Failed to validate video ID ${id}:`, error);
+  }
+};
 
   return (
     <UserContext.Provider

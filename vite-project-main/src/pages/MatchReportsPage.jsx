@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { 
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
@@ -6,53 +6,81 @@ import {
 import Layout from '../components/shared/Layout';
 import { UserContext } from '../context/UserContext';
 import axios from 'axios';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 // Configuration for API calls
 const API_BASE_URL = 'http://127.0.0.1:8000'; // Change this for production
 
 function MatchReportsPage() {
   const { User, videoId } = useContext(UserContext);
+  const [localVideoId, setLocalVideoId] = useState(videoId);
   const [matchStats, setMatchStats] = useState(null);
   const [results, setResults] = useState(null);
   const [status, setStatus] = useState('idle'); // 'idle', 'fetching', 'completed', 'failed'
   const [apiError, setApiError] = useState(null);
+  const reportRef = useRef(null); // Reference to the report content for PDF generation
 
-  // Fetch video data using UserContext videoId
+  // Fetch or validate video ID
   useEffect(() => {
-    console.log('UserContext videoId in MatchReportsPage:', videoId);
-    if (videoId) {
-      const fetchVideoData = async () => {
-        try {
-          setStatus('fetching');
-          const token = localStorage.getItem('token');
-          console.log(`Fetching video data for videoId: ${videoId}`);
+    const fetchVideoData = async () => {
+      try {
+        setStatus('fetching');
+        const token = localStorage.getItem('token');
+        let selectedVideoId = videoId;
+
+        // Validate videoId from UserContext
+        if (videoId) {
           const response = await axios.get(`${API_BASE_URL}/api/videos/${videoId}/`, {
             headers: { Authorization: `Bearer ${token}` },
           });
-          console.log('Video data response:', response.data);
-          setStatus(response.data.status);
-          checkStatus(videoId);
-        } catch (error) {
-          console.error('Failed to fetch video data:', error);
-          setStatus('failed');
-          setApiError('Failed to fetch video data. Please ensure a valid video is processed.');
+          console.log('UserContext video data response:', response.data);
+          if (response.data.status !== 'completed') {
+            console.warn(`Video ID ${videoId} is not completed (status: ${response.data.status}). Fetching latest completed video.`);
+            selectedVideoId = null;
+          }
         }
-      };
-      fetchVideoData();
-    } else {
-      setStatus('failed');
-      setApiError('No video ID available. Please process a video in the Dashboard.');
-    }
-  }, [videoId]);
+
+        // If no valid videoId, fetch the latest completed video
+        if (!selectedVideoId) {
+          const videosResponse = await axios.get(`${API_BASE_URL}/api/videos/`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          console.log('Videos list response:', videosResponse.data);
+          const completedVideo = videosResponse.data.find(video => video.status === 'completed');
+          if (completedVideo) {
+            selectedVideoId = completedVideo.id;
+            console.log(`Selected latest completed video ID: ${selectedVideoId}`);
+          } else {
+            throw new Error('No completed videos found.');
+          }
+        }
+
+        setLocalVideoId(selectedVideoId);
+        const response = await axios.get(`${API_BASE_URL}/api/videos/${selectedVideoId}/`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log('Selected video data response:', response.data);
+        setStatus(response.data.status);
+        checkStatus(selectedVideoId);
+      } catch (error) {
+        console.error('Failed to fetch video data:', error);
+        setStatus('failed');
+        setApiError(error.message || 'Failed to fetch video data. Please process a video first.');
+      }
+    };
+
+    fetchVideoData();
+  }, [videoId]); 
 
   // Check status periodically
   useEffect(() => {
     let interval;
-    if (videoId && (status === 'processing' || status === 'uploading')) {
-      interval = setInterval(() => checkStatus(videoId), 5000);
+    if (localVideoId && (status === 'processing' || status === 'uploading')) {
+      interval = setInterval(() => checkStatus(localVideoId), 5000);
     }
     return () => clearInterval(interval);
-  }, [videoId, status]);
+  }, [localVideoId, status]);
 
   // Fetch match summary data when results are available
   useEffect(() => {
@@ -104,30 +132,76 @@ function MatchReportsPage() {
     }
   };
 
+  // Function to generate PDF
+  const generatePDF = async () => {
+    if (!reportRef.current) return;
+
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = 210; // A4 width in mm
+    const pageHeight = 297; // A4 height in mm
+    const margin = 10;
+    const contentWidth = pageWidth - 2 * margin;
+
+    try {
+      // Capture the entire report content
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2, // Higher scale for better quality
+        useCORS: true,
+        logging: true,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const imgProps = pdf.getImageProperties(imgData);
+      const imgHeight = (imgProps.height * contentWidth) / imgProps.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // Add first page
+      pdf.addImage(imgData, 'PNG', margin, margin, contentWidth, Math.min(imgHeight, pageHeight - 2 * margin));
+      heightLeft -= (pageHeight - 2 * margin);
+
+      // Add additional pages if content overflows
+      while (heightLeft > 0) {
+        position -= (pageHeight - 2 * margin);
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', margin, position, contentWidth, imgHeight);
+        heightLeft -= (pageHeight - 2 * margin);
+      }
+
+      // Save the PDF
+      pdf.save(`Match_Report_${localVideoId || 'Unknown'}.pdf`);
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      setApiError('Failed to generate PDF report.');
+    }
+  };
+
   return (
     <Layout title="Match Reports">
-      {apiError && (
-        <div className="mb-4 p-3 bg-red-500 bg-opacity-20 border border-red-500 rounded-md">
-          <p className="text-red-500 text-sm">{apiError}</p>
+      <div ref={reportRef}>
+        {apiError && (
+          <div className="mb-4 p-3 bg-red-500 bg-opacity-20 border border-red-500 rounded-md">
+            <p className="text-red-500 text-sm">{apiError}</p>
+          </div>
+        )}
+        <PageHeader results={results} onGeneratePDF={generatePDF} />
+        <div className="mt-4">
+          <MatchSummary matchStats={matchStats} status={status} />
         </div>
-      )}
-      <PageHeader results={results} />
-      <div className="mt-4">
-        <MatchSummary matchStats={matchStats} status={status} />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-        <TeamStatistics matchStats={matchStats} status={status} />
-        <PlayerStatistics matchStats={matchStats} status={status} />
-      </div>
-      <div className="mt-4">
-        <PassEvents matchStats={matchStats} status={status} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <TeamStatistics matchStats={matchStats} status={status} />
+          <PlayerStatistics matchStats={matchStats} status={status} />
+        </div>
+        <div className="mt-4">
+          <PassEvents matchStats={matchStats} status={status} />
+        </div>
       </div>
     </Layout>
   );
 }
 
 // Page-specific components
-function PageHeader({ results }) {
+function PageHeader({ results, onGeneratePDF }) {
   return (
     <div className="bg-gray-800 rounded-lg p-4 shadow-lg flex items-center">
       <div className="flex items-center">
@@ -139,7 +213,10 @@ function PageHeader({ results }) {
         Generate detailed data-driven match reports
       </div>
       <div className="ml-auto flex space-x-3">
-        <button className="px-4 py-2 bg-cyan-600 text-white rounded-full shadow-lg hover:bg-cyan-700 transition">
+        <button 
+          onClick={onGeneratePDF}
+          className="px-4 py-2 bg-cyan-600 text-white rounded-full shadow-lg hover:bg-cyan-700 transition"
+        >
           Generate Report
         </button>
         {results?.summary && (
@@ -196,7 +273,7 @@ function MatchSummary({ matchStats, status }) {
               {teamAGoals} - {teamBGoals}
             </div>
             <div className="text-cyan-400 text-sm mt-1">
-              Match ID: {matchStats.match_id || 'N/A'} • {new Date().toLocaleDateString()}
+              {new Date().toLocaleDateString()}
             </div>
           </div>
           
@@ -438,8 +515,8 @@ function PassEvents({ matchStats, status }) {
   const passData = matchStats.passes?.map((pass, index) => ({
     id: index + 1,
     frame: pass.frame,
-    fromPlayer: pass.from_player_id || 'Unknown',
-    toPlayer: pass.to_player_id || 'Unknown',
+    fromPlayer: pass.from_player || 'Unknown',
+    toPlayer: pass.to_player || 'Unknown',
     team: pass.team,
   })) || [];
 
