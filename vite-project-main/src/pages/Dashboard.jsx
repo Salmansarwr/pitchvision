@@ -865,7 +865,7 @@ function Dashboard() {
     <Layout title="Dashboard">
       <div className="mt-4">
         <h1 className="text-2xl text-white font-bold mb-4">
-          Welcome, {user?.name || 'User'}!
+          Welcome, {`${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.email || 'User'}!
         </h1>
         {apiError && (
           <div className="mb-4 p-3 bg-red-500 bg-opacity-20 border border-red-500 rounded-md">

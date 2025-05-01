@@ -7,6 +7,10 @@ export const UserProvider = ({ children }) => {
     const savedUser = localStorage.getItem('user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
+  const [profile, setProfile] = useState(() => {
+    const savedProfile = localStorage.getItem('profile');
+    return savedProfile ? JSON.parse(savedProfile) : null;
+  });
   const [videoData, setVideoData] = useState(() => {
     const savedVideoData = localStorage.getItem('videoData');
     return savedVideoData ? JSON.parse(savedVideoData) : null;
@@ -27,8 +31,15 @@ export const UserProvider = ({ children }) => {
         })
         .then((response) => {
           setUser({
-            name: response.data.name || 'User',
+            first_name: response.data.first_name,
+            last_name: response.data.last_name,
             email: response.data.email,
+            last_login: response.data.last_login,
+          });
+          setProfile({
+            phone_number: response.data.phone_number,
+            experience_level: response.data.experience_level,
+            created_at: response.data.created_at,
           });
           setLoading(false);
         })
@@ -36,7 +47,9 @@ export const UserProvider = ({ children }) => {
           console.error('Token validation failed:', error);
           localStorage.removeItem('token');
           localStorage.removeItem('user');
+          localStorage.removeItem('profile');
           setUser(null);
+          setProfile(null);
           setLoading(false);
         });
     } else {
@@ -52,6 +65,15 @@ export const UserProvider = ({ children }) => {
       localStorage.removeItem('user');
     }
   }, [user]);
+
+  // Save profile to localStorage
+  useEffect(() => {
+    if (profile) {
+      localStorage.setItem('profile', JSON.stringify(profile));
+    } else {
+      localStorage.removeItem('profile');
+    }
+  }, [profile]);
 
   // Save videoData to localStorage
   useEffect(() => {
@@ -94,15 +116,38 @@ export const UserProvider = ({ children }) => {
   }, [videoId]);
 
   const login = (userData, token) => {
-    setUser(userData);
+    setUser({
+      first_name: userData.name.split(' ')[0] || '',
+      last_name: userData.name.split(' ').slice(1).join(' ') || '',
+      email: userData.email,
+      last_login: null, // Will be updated on next user fetch
+    });
+    // Fetch profile data after login
+    axios
+      .get('http://127.0.0.1:8000/api/auth/user/', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((response) => {
+        setProfile({
+          phone_number: response.data.phone_number,
+          experience_level: response.data.experience_level,
+          created_at: response.data.created_at,
+        });
+      })
+      .catch((error) => {
+        console.error('Failed to fetch profile data:', error);
+      });
     localStorage.setItem('token', token);
   };
 
   const logout = () => {
     setUser(null);
+    setProfile(null);
     setVideoData(null);
     setVideoId(null);
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('profile');
   };
 
   const updateVideoData = (data) => {
@@ -115,7 +160,17 @@ export const UserProvider = ({ children }) => {
 
   return (
     <UserContext.Provider
-      value={{ user, videoData, videoId, login, logout, updateVideoData, updateVideoId, loading }}
+      value={{
+        user,
+        profile,
+        videoData,
+        videoId,
+        login,
+        logout,
+        updateVideoData,
+        updateVideoId,
+        loading,
+      }}
     >
       {children}
     </UserContext.Provider>

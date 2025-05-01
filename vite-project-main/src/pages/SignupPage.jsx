@@ -7,9 +7,10 @@ const SignupPage = () => {
     firstName: '',
     lastName: '',
     email: '',
+    phoneNumber: '',
     password: '',
     confirmPassword: '',
-    teamName: '',
+    experienceLevel: '',
     agreeTerms: false,
   });
   const [formErrors, setFormErrors] = useState({});
@@ -65,6 +66,13 @@ const SignupPage = () => {
       errors.email = 'Please enter a valid email address';
     }
 
+    if (!formData.phoneNumber.trim()) {
+      errors.phoneNumber = 'Phone number is required';
+    } else if (!/^\d{11}$/.test(formData.phoneNumber.replace(/\D/g, ''))) {
+      errors.phoneNumber = 'Phone number must be exactly 11 digits';
+    }
+    
+
     // Password validation
     if (!formData.password) {
       errors.password = 'Password is required';
@@ -85,13 +93,9 @@ const SignupPage = () => {
       errors.confirmPassword = 'Passwords do not match';
     }
 
-    // Team name validation
-    if (!formData.teamName.trim()) {
-      errors.teamName = 'Team name is required';
-    } else if (formData.teamName.trim().length < 2) {
-      errors.teamName = 'Team name must be at least 2 characters';
-    } else if (formData.teamName.trim().length > 100) {
-      errors.teamName = 'Team name must be less than 100 characters';
+    // Experience level validation
+    if (!formData.experienceLevel) {
+      errors.experienceLevel = 'Experience level is required';
     }
 
     // Terms agreement validation
@@ -117,8 +121,9 @@ const SignupPage = () => {
             first_name: formData.firstName,
             last_name: formData.lastName,
             email: formData.email,
+            phone_number: formData.phoneNumber,
             password: formData.password,
-            team_name: formData.teamName,
+            experience_level: formData.experienceLevel,
           }),
         });
         const data = await response.json();
@@ -271,7 +276,6 @@ const SignupPage = () => {
                     <p className="text-red-500 text-xs mt-1">{formErrors.lastName}</p>
                   )}
                 </div>
- copperplate gothic
               </div>
 
               <div className="mb-4">
@@ -290,6 +294,28 @@ const SignupPage = () => {
                 />
                 {formErrors.email && (
                   <p className="text-red-500 text-xs mt-1">{formErrors.email}</p>
+                )}
+              </div>
+
+              <div className="mb-4">
+                <label
+                  className="block text-gray-400 text-sm font-medium mb-1"
+                  htmlFor="phoneNumber"
+                >
+                  Phone Number *
+                </label>
+                <input
+                  type="tel"
+                  id="phoneNumber"
+                  name="phoneNumber"
+                  value={formData.phoneNumber}
+                  onChange={handleChange}
+                  className={`w-full px-3 py-2 bg-gray-700 border ${
+                    formErrors.phoneNumber ? 'border-red-500' : 'border-gray-600'
+                  } rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                />
+                {formErrors.phoneNumber && (
+                  <p className="text-red-500 text-xs mt-1">{formErrors.phoneNumber}</p>
                 )}
               </div>
 
@@ -386,22 +412,26 @@ const SignupPage = () => {
               <div className="mb-6">
                 <label
                   className="block text-gray-400 text-sm font-medium mb-1"
-                  htmlFor="teamName"
+                  htmlFor="experienceLevel"
                 >
-                  Team Name *
+                  Experience Level *
                 </label>
-                <input
-                  type="text"
-                  id="teamName"
-                  name="teamName"
-                  value={formData.teamName}
+                <select
+                  id="experienceLevel"
+                  name="experienceLevel"
+                  value={formData.experienceLevel}
                   onChange={handleChange}
                   className={`w-full px-3 py-2 bg-gray-700 border ${
-                    formErrors.teamName ? 'border-red-500' : 'border-gray-600'
+                    formErrors.experienceLevel ? 'border-red-500' : 'border-gray-600'
                   } rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-                {formErrors.teamName && (
-                  <p className="text-red-500 text-xs mt-1">{formErrors.teamName}</p>
+                >
+                  <option value="">Select Experience Level</option>
+                  <option value="Beginner">Beginner</option>
+                  <option value="Enthusiast">Enthusiast</option>
+                  <option value="Pro">Pro</option>
+                </select>
+                {formErrors.experienceLevel && (
+                  <p className="text-red-500 text-xs mt-1">{formErrors.experienceLevel}</p>
                 )}
               </div>
 

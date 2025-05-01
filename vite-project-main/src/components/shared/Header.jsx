@@ -21,19 +21,17 @@ function Header({ title = "Dashboard" }) {
     };
   }, []);
 
-  // Get user initials from name
-  const getInitials = (name) => {
-    if (!name) return 'U';
-    const names = name.trim().split(' ');
-    const initials = names
-      .slice(0, 2)
-      .map((n) => n.charAt(0).toUpperCase())
-      .join('');
-    return initials || 'U';
+  // Get user initials from first_name and last_name
+  const getInitials = () => {
+    if (!user?.first_name && !user?.last_name) return 'U';
+    const firstInitial = user?.first_name?.charAt(0)?.toUpperCase() || '';
+    const lastInitial = user?.last_name?.charAt(0)?.toUpperCase() || '';
+    return `${firstInitial}${lastInitial}` || 'U';
   };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('profile');
     localStorage.removeItem('token');
     window.location.href = '/login';
   };
@@ -51,7 +49,7 @@ function Header({ title = "Dashboard" }) {
             className="flex items-center focus:outline-none"
           >
             <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-medium">
-              {getInitials(user?.name)}
+              {getInitials()}
             </div>
             <svg 
               xmlns="http://www.w3.org/2000/svg" 
