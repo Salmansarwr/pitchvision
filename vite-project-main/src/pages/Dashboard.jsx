@@ -1,31 +1,29 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
-import { UserContext } from '../context/UserContext';
 import Layout from '../components/shared/Layout';
+import { UserContext } from '../context/UserContext';
 import axios from 'axios';
 
 // Configuration for API calls
 const API_BASE_URL = 'http://127.0.0.1:8000'; // Change this for production
 
 function Dashboard() {
-  const { user } = useContext(UserContext); // Added for UserContext
+  // Video processing states
+  const { user } = useContext(UserContext);
   const [file, setFile] = useState(null);
   const [videoId, setVideoId] = useState(null);
-  const [status, setStatus] = useState('idle');
+  const [status, setStatus] = useState('idle'); // 'idle', 'uploading', 'processing', 'completed', 'failed'
   const [results, setResults] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [activeTab, setActiveTab] = useState('live');
+  const [activeTab, setActiveTab] = useState('live'); // 'live', 'heatmap', 'passes', 'paths'
   const fileInputRef = useRef(null);
   const [selectedVideo, setSelectedVideo] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [videoError, setVideoError] = useState(null);
   const [matchStats, setMatchStats] = useState(null);
-  const [selectedTeam, setSelectedTeam] = useState('Team A');
-  const [apiError, setApiError] = useState(null); // Added for API error handling
+  const [selectedTeam, setSelectedTeam] = useState('Team A'); // Toggle state for team selection
+  const [apiError] = useState(null); // State for API error handling
 
-  // Get auth token from localStorage (adjust based on your auth setup)
-  const getAuthToken = () => localStorage.getItem('token');
-
-  // Check status periodically
+  // Check status periodically when videoId exists and status is processing
   useEffect(() => {
     let interval;
     if (videoId && (status === 'processing' || status === 'uploading')) {
@@ -34,20 +32,16 @@ function Dashboard() {
     return () => clearInterval(interval);
   }, [videoId, status]);
 
-  // Fetch match summary data
+  // Fetch match summary data when results are available
   useEffect(() => {
     if (results?.summary && status === 'completed') {
       const fetchMatchSummary = async () => {
         try {
-          const response = await axios.get(results.summary, {
-            headers: { Authorization: `Bearer ${getAuthToken()}` },
-          });
+          const response = await axios.get(results.summary);
           setMatchStats(response.data);
-          setApiError(null);
         } catch (error) {
           console.error('Failed to fetch match summary:', error);
           setMatchStats(null);
-          setApiError('Failed to load match summary. Please try again.');
         }
       };
       fetchMatchSummary();
@@ -57,8 +51,7 @@ function Dashboard() {
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
     setSelectedVideo(e.target.files[0]?.name || '');
-    setShowDropdown(false);
-    setApiError(null);
+    setShowDropdown(false); // Close dropdown after file selection
   };
 
   const triggerFileInput = () => {
@@ -71,11 +64,12 @@ function Dashboard() {
     try {
       setStatus('uploading');
       setUploadProgress(0);
-      setApiError(null);
 
+      // Create form data
       const formData = new FormData();
       formData.append('video_file', file);
 
+      // Simulating upload progress
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => {
           if (prev >= 95) {
@@ -86,68 +80,94 @@ function Dashboard() {
         });
       }, 500);
 
+      console.log('Uploading to:', `${API_BASE_URL}/api/videos/`);
+      
+      // Make direct axios call
       const response = await axios.post(`${API_BASE_URL}/api/videos/`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
-          Authorization: `Bearer ${getAuthToken()}`,
         },
       });
+
+      console.log('Upload response:', response.data);
 
       clearInterval(progressInterval);
       setUploadProgress(100);
 
       setVideoId(response.data.id);
       setStatus(response.data.status);
+
+      // Start checking status
+      checkStatus(response.data.id);
     } catch (error) {
       console.error('Upload failed:', error);
       setStatus('failed');
-      setApiError(error.response?.data?.message || 'Failed to upload video. Please try again.');
     }
   };
 
   const checkStatus = async (id) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/videos/${id}/`, {
-        headers: { Authorization: `Bearer ${getAuthToken()}` },
-      });
+      console.log(`Checking status for video ${id} at ${API_BASE_URL}/api/videos/${id}/`);
+      
+      const response = await axios.get(`${API_BASE_URL}/api/videos/${id}/`);
+      console.log('Status response:', response.data);
+      
       setStatus(response.data.status);
 
       if (response.data.status === 'completed') {
+        // Log all URLs for debugging
+        console.log('Output Video URL:', response.data.output_video_url);
+        console.log('Summary JSON URL:', response.data.summary_json_url);
+        console.log('Object Tracks URL:', response.data.object_tracks_json_url);
+        console.log('Keypoint Tracks URL:', response.data.keypoint_tracks_json_url);
+        
+        // Ensure all URLs are absolute
         const ensureAbsoluteUrl = (url) => {
           if (!url) return null;
           return url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
         };
-
+        
         setResults({
           outputVideo: ensureAbsoluteUrl(response.data.output_video_url),
           summary: ensureAbsoluteUrl(response.data.summary_json_url),
           objectTracks: ensureAbsoluteUrl(response.data.object_tracks_json_url),
           keypointTracks: ensureAbsoluteUrl(response.data.keypoint_tracks_json_url),
         });
-        setApiError(null);
+        
+        // Log the processed URLs
+        console.log('Processed output video URL:', ensureAbsoluteUrl(response.data.output_video_url));
       }
     } catch (error) {
       console.error('Status check failed:', error);
       setStatus('failed');
-      setApiError('Failed to check video status. Please try again.');
     }
   };
 
+  // Function to manually test the video playback
   const testVideoPlayback = () => {
     if (!results || !results.outputVideo) {
-      setVideoError('No video URL available to test.');
+      console.error('No video URL available to test');
       return;
     }
-
+    
+    console.log('Testing video playback from URL:', results.outputVideo);
+    
+    // Create a temporary video element to test loading
     const testVideo = document.createElement('video');
     testVideo.muted = true;
-
+    
+    // Log loading events
     testVideo.addEventListener('loadstart', () => console.log('Video loading started'));
-    testVideo.addEventListener('canplay', () => console.log('Video can play'));
+    testVideo.addEventListener('canplay', () => console.log('Video can play - format is supported'));
+    testVideo.addEventListener('canplaythrough', () => console.log('Video can play through without buffering'));
+    
+    // Handle errors
     testVideo.addEventListener('error', () => {
+      console.error('Video load error:', testVideo.error);
       setVideoError(`Error loading video: ${testVideo.error?.message || 'Unknown error'}`);
     });
-
+    
+    // Set source and attempt to load
     testVideo.src = results.outputVideo;
     testVideo.load();
   };
@@ -165,7 +185,7 @@ function Dashboard() {
           <input
             type="text"
             value={selectedVideo}
-            readOnly
+            read BMJ to read-only
             placeholder="Select a match video"
             className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             onClick={() => setShowDropdown(!showDropdown)}
@@ -314,6 +334,7 @@ function Dashboard() {
     );
   };
 
+  // Sample player data for the visualization, including player 1
   const renderPlayers = () => {
     const players = [
       { id: 1, x: '40%', y: '70%', team: 'a' },
@@ -353,6 +374,7 @@ function Dashboard() {
     if (activeTab === 'live') {
       return (
         <div className="relative w-full aspect-[16/9] max-w-4xl bg-gradient-to-r from-green-900 to-green-800 rounded-lg overflow-hidden mx-auto">
+          {/* Field markings */}
           <div className="absolute inset-0 border-2 border-white border-opacity-30 m-2 rounded"></div>
           <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white bg-opacity-30"></div>
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full border border-white border-opacity-30"></div>
@@ -360,6 +382,8 @@ function Dashboard() {
           <div className="absolute top-1/4 right-0 h-1/2 w-1/6 border border-white border-opacity-30"></div>
           <div className="absolute top-1/3 left-0 h-1/3 w-1/12 border border-white border-opacity-30"></div>
           <div className="absolute top-1/3 right-0 h-1/3 w-1/12 border border-white border-opacity-30"></div>
+
+          {/* Players and ball */}
           {renderPlayers()}
           {renderBall()}
         </div>
@@ -367,26 +391,32 @@ function Dashboard() {
     } else if (activeTab === 'heatmap') {
       return (
         <div className="relative w-full aspect-[16/9] max-w-4xl bg-gradient-to-r from-green-900 to-green-800 rounded-lg overflow-hidden mx-auto">
+          {/* Field markings */}
           <div className="absolute inset-0 border-2 border-white border-opacity-30 m-2 rounded"></div>
           <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white bg-opacity-30"></div>
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full border border-white border-opacity-30"></div>
           <div className="absolute top-1/4 left-0 h-1/2 w-1/6 border border-white border-opacity-30"></div>
           <div className="absolute top-1/4 right-0 h-1/2 w-1/6 border border-white border-opacity-30"></div>
+
+          {/* Heatmap simulation */}
           <div className="absolute top-1/3 left-1/2 h-32 w-32 bg-red-500 rounded-full opacity-20 blur-lg transform -translate-x-1/2 -translate-y-1/4"></div>
           <div className="absolute top-2/5 left-3/5 h-40 w-40 bg-red-500 rounded-full opacity-30 blur-lg transform -translate-x-1/2 -translate-y-1/4"></div>
           <div className="absolute top-1/2 left-2/3 h-44 w-44 bg-red-500 rounded-full opacity-40 blur-lg transform -translate-x-1/2 -translate-y-1/2"></div>
           <div className="absolute top-3/5 left-3/4 h-36 w-36 bg-red-500 rounded-full opacity-25 blur-lg transform -translate-x-1/2 -translate-y-1/2"></div>
-          {renderPlayers()}
+
         </div>
       );
     } else if (activeTab === 'passes') {
       return (
         <div className="relative w-full aspect-[16/9] max-w-4xl bg-gradient-to-r from-green-900 to-green-800 rounded-lg overflow-hidden mx-auto">
+          {/* Field markings */}
           <div className="absolute inset-0 border-2 border-white border-opacity-30 m-2 rounded"></div>
           <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white bg-opacity-30"></div>
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full border border-white border-opacity-30"></div>
           <div className="absolute top-1/4 left-0 h-1/2 w-1/6 border border-white border-opacity-30"></div>
           <div className="absolute top-1/4 right-0 h-1/2 w-1/6 border border-white border-opacity-30"></div>
+
+          {/* Passing network simulation */}
           <svg className="absolute inset-0 w-full h-full">
             <line
               x1="30%"
@@ -434,17 +464,21 @@ function Dashboard() {
               strokeDasharray="5,5"
             />
           </svg>
+
           {renderPlayers()}
         </div>
       );
     } else {
       return (
         <div className="relative w-full aspect-[16/9] max-w-4xl bg-gradient-to-r from-green-900 to-green-800 rounded-lg overflow-hidden mx-auto">
+          {/* Field markings */}
           <div className="absolute inset-0 border-2 border-white border-opacity-30 m-2 rounded"></div>
           <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white bg-opacity-30"></div>
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full border border-white border-opacity-30"></div>
           <div className="absolute top-1/4 left-0 h-1/2 w-1/6 border border-white border-opacity-30"></div>
           <div className="absolute top-1/4 right-0 h-1/2 w-1/6 border border-white border-opacity-30"></div>
+
+          {/* Player paths simulation */}
           <svg className="absolute inset-0 w-full h-full">
             <path
               d="M 30% 60% C 40% 65%, 45% 70%, 50% 75%"
@@ -459,15 +493,17 @@ function Dashboard() {
               fill="none"
             />
           </svg>
+
           {renderPlayers()}
         </div>
       );
     }
   };
 
+  // Update the video rendering section to cover full width with 1920x1080 resolution and 16:9 aspect ratio
   const renderProcessedVideo = () => {
     if (!results?.outputVideo) return null;
-
+    
     return (
       <div className="mt-4">
         <h3 className="text-white text-lg font-medium mb-2">Processed Video</h3>
@@ -489,20 +525,21 @@ function Dashboard() {
               setVideoError(null);
             }}
           />
+          
           {videoError && (
             <div className="mt-2 p-3 bg-red-900 bg-opacity-70 rounded text-white">
               {videoError}
               <div className="mt-2">
                 <p>Video URL: {results.outputVideo}</p>
-                <button
+                <button 
                   onClick={testVideoPlayback}
                   className="px-3 py-1 bg-blue-600 rounded mt-1 text-sm"
                 >
                   Test Video URL
                 </button>
-                <a
-                  href={results.outputVideo}
-                  target="_blank"
+                <a 
+                  href={results.outputVideo} 
+                  target="_blank" 
                   rel="noopener noreferrer"
                   className="px-3 py-1 bg-green-600 rounded mt-1 ml-2 text-sm inline-block"
                 >
@@ -525,7 +562,11 @@ function Dashboard() {
       </div>
 
       <div className="p-4 flex-grow flex flex-col justify-center overflow-auto custom-scrollbar">
-        {status === 'completed' && results?.outputVideo ? renderProcessedVideo() : renderPitchView()}
+        {status === 'completed' && results?.outputVideo ? (
+          renderProcessedVideo()
+        ) : (
+          renderPitchView()
+        )}
       </div>
 
       {status !== 'completed' && (
@@ -569,14 +610,17 @@ function Dashboard() {
     </div>
   );
 
+  // Dashboard metrics with team toggle
   const renderDashboardMetrics = () => {
     if (status !== 'completed' || !results || !matchStats) return null;
 
+    // Calculate metrics for the selected team
     const totalDistance = matchStats.player_stats
-      ? Object.entries(matchStats.player_stats).reduce((sum, [, stats]) => {
+      ? Object.entries(matchStats.player_stats).reduce((sum, [ , stats]) => {
           return stats.team === selectedTeam ? sum + (stats.total_distance_m || 0) : sum;
-        }, 0) / 1000
+        }, 0) / 1000 // Convert to km
       : null;
+      
 
     const topSpeed = matchStats.rankings?.max_speed?.length
       ? Math.max(
@@ -695,6 +739,7 @@ function Dashboard() {
     );
   };
 
+  // Results and downloadable reports section
   const renderResultsSection = () => {
     if (status !== 'completed' || !results) return null;
 
@@ -779,13 +824,13 @@ function Dashboard() {
                 <div className="flex items-center mb-2">
                   <div className="h-3 w-3 rounded-full bg-blue-600 mr-2"></div>
                   <span className="text-white font-medium">
-                    Team A Goals: {matchStats.goals.filter((g) => g.team === 'Team A').length}
+                    Team A Goals: {matchStats.goals.filter(g => g.team === 'Team A').length}
                   </span>
                 </div>
                 <div className="text-sm text-gray-400">
-                  {matchStats.goals.filter((g) => g.team === 'Team A').length
+                  {matchStats.goals.filter(g => g.team === 'Team A').length
                     ? matchStats.goals
-                        .filter((g) => g.team === 'Team A')
+                        .filter(g => g.team === 'Team A')
                         .map((goal) => `${Math.floor(goal.frame / 60)}' - Player Unknown`)
                         .join(', ')
                     : 'No goals scored'}
@@ -795,13 +840,13 @@ function Dashboard() {
                 <div className="flex items-center mb-2">
                   <div className="h-3 w-3 rounded-full bg-pink-600 mr-2"></div>
                   <span className="text-white font-medium">
-                    Team B Goals: {matchStats.goals.filter((g) => g.team === 'Team B').length}
+                    Team B Goals: {matchStats.goals.filter(g => g.team === 'Team B').length}
                   </span>
                 </div>
                 <div className="text-sm text-gray-400">
-                  {matchStats.goals.filter((g) => g.team === 'Team B').length
+                  {matchStats.goals.filter(g => g.team === 'Team B').length
                     ? matchStats.goals
-                        .filter((g) => g.team === 'Team B')
+                        .filter(g => g.team === 'Team B')
                         .map((goal) => `${Math.floor(goal.frame / 60)}' - Player Unknown`)
                         .join(', ')
                     : 'No goals scored'}
