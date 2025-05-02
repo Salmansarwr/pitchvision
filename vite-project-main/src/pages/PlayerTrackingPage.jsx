@@ -300,6 +300,34 @@ function PerformanceOverview({ matchStats, status, selectedPlayerId }) {
     }
   }
 
+  // Calculate Fatigue Index
+  let fatigueIndex = 'N/A';
+  if (playerStats.speed_history?.length) {
+    // Default body weight (in kg)
+    const bodyWeight = 70;
+    // Convert speeds to m/s and calculate power (proportional to speed^3)
+    const sprintSpeeds = playerStats.speed_history
+      .map((speed, index) => ({ speed, index }))
+      .filter(({ speed }) => speed > 25) // Sprints only
+      .map(({ speed, index }) => ({
+        index,
+        speedMs: speed * (1000 / 3600), // Convert km/h to m/s
+      }))
+      .map(({ index, speedMs }) => ({
+        index,
+        power: bodyWeight * Math.pow(speedMs, 3), // Simplified power estimate
+      }));
+
+    if (sprintSpeeds.length >= 2) {
+      const maxPower = Math.max(...sprintSpeeds.map(s => s.power));
+      const minPower = Math.min(...sprintSpeeds.map(s => s.power));
+      fatigueIndex = ((maxPower - minPower) / maxPower) * 100;
+      fatigueIndex = fatigueIndex.toFixed(1) + '%';
+    } else {
+      fatigueIndex = 'Insufficient sprint data';
+    }
+  }
+
   // Simulate speed history over time if available
   const speedHistory = playerStats.speed_history?.length ? playerStats.speed_history.map((speed, index) => ({
     minute: `${index * 15}-${(index + 1) * 15}`,
@@ -351,10 +379,14 @@ function PerformanceOverview({ matchStats, status, selectedPlayerId }) {
           <div className="bg-gray-700 bg-opacity-30 rounded-lg p-3">
             <div className="flex justify-between items-center mb-2">
               <h4 className="text-gray-400 text-sm">Fatigue Index</h4>
-              <span className="text-yellow-400 text-sm">72%</span>
+              <span className="text-yellow-400 text-sm">{fatigueIndex}</span>
             </div>
             <div className="h-2 w-full bg-gray-600 rounded-full">
-              <div className="h-full bg-yellow-500 rounded-full" style={{ width: '72%' }}></div>
+              {fatigueIndex !== 'N/A' && fatigueIndex !== 'Insufficient sprint data' ? (
+                <div className="h-full bg-yellow-500 rounded-full" style={{ width: fatigueIndex }}></div>
+              ) : (
+                <div className="h-full bg-gray-500 rounded-full" style={{ width: '0%' }}></div>
+              )}
             </div>
           </div>
         </div>
@@ -469,7 +501,7 @@ function HeatmapView() {
                 <div className="text-gray-400">Left</div>
                 <div className="text-white font-medium">35%</div>
               </div>
-              <div className= "bg-gray-700 p-2 rounded">
+              <div className="bg-gray-700 p-2 rounded">
                 <div className="text-gray-400">Center</div>
                 <div className="text-white font-medium">45%</div>
               </div>
@@ -546,6 +578,47 @@ function SpeedTracker({ matchStats, status, selectedPlayerId }) {
   const topSpeed = playerStats.max_speed_kmph || 0;
   const avgSpeed = playerStats.avg_speed_kmph || 0;
 
+  // Calculate sprints (speed > 25 km/h) and their durations
+  let sprintCount = 0;
+  let sprintDurations = [];
+  let sprintDistances = [];
+  let currentSprintDuration = 0;
+  const speedHistory = playerStats.speed_history || [];
+
+  for (let i = 0; i < speedHistory.length; i++) {
+    if (speedHistory[i] > 25) {
+      currentSprintDuration++;
+      // Assuming 1 second per sample, convert speed (km/h) to distance (m) per second
+      const speedMs = speedHistory[i] * (1000 / 3600); // Convert km/h to m/s
+      sprintDistances.push(speedMs); // Distance covered in 1 second
+    } else {
+      if (currentSprintDuration > 0) {
+        sprintCount++;
+        sprintDurations.push(currentSprintDuration);
+        currentSprintDuration = 0;
+      }
+    }
+  }
+  // Handle case where sprint ends at the last data point
+  if (currentSprintDuration > 0) {
+    sprintCount++;
+    sprintDurations.push(currentSprintDuration);
+  }
+
+  // Calculate max sprint duration (in seconds)
+  const maxSprintDuration = sprintDurations.length > 0 ? Math.max(...sprintDurations) : 0;
+
+  // Calculate average sprint distance
+  const totalSprintDistance = sprintDistances.reduce((sum, distance) => sum + distance, 0);
+  const avgSprintDistance = sprintDistances.length > 0 ? (totalSprintDistance / sprintDistances.length).toFixed(1) : 0;
+
+  // Calculate speed zone percentages
+  const runningCount = speedHistory.filter(speed => speed >= 14 && speed <= 25).length;
+  const sprintingCount = speedHistory.filter(speed => speed > 25).length;
+  const totalCount = speedHistory.length || 1; // Avoid division by zero
+  const runningPercentage = ((runningCount / totalCount) * 100).toFixed(0);
+  const sprintingPercentage = ((sprintingCount / totalCount) * 100).toFixed(0);
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
       <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
@@ -569,19 +642,16 @@ function SpeedTracker({ matchStats, status, selectedPlayerId }) {
             <BarChart
               layout="vertical"
               data={[
-                { name: 'Walking (0-7)', value: 38 },
-                { name: 'Jogging (7-14)', value: 42 },
-                { name: 'Running (14-21)', value: 25 },
-                { name: 'High-Speed (21-25)', value: 15 },
-                { name: 'Sprinting (25+)', value: 8 },
+                { name: 'Running (14-25)', value: runningPercentage },
+                { name: 'Sprinting (25+)', value: sprintingPercentage },
               ]}
               margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis type="number" stroke="#666" />
+              <XAxis type="number" stroke="#666" unit="%" />
               <YAxis dataKey="name" type="category" stroke="#666" tick={{ fontSize: 10 }} width={100} />
               <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: 'white' }} />
-              <Bar dataKey="value" fill="#3b82f6" barSize={10} radius={[0, 4, 4, 0]} />
+              <Bar dataKey="value" fill="#3b82f6" barSize={20} radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -591,15 +661,15 @@ function SpeedTracker({ matchStats, status, selectedPlayerId }) {
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="bg-gray-700 bg-opacity-30 p-2 rounded">
               <div className="text-gray-400 text-xs">Total</div>
-              <div className="text-white font-medium">23</div>
+              <div className="text-white font-medium">{sprintCount}</div>
             </div>
             <div className="bg-gray-700 bg-opacity-30 p-2 rounded">
               <div className="text-gray-400 text-xs">Max Duration</div>
-              <div className="text-white font-medium">4.2s</div>
+              <div className="text-white font-medium">{maxSprintDuration.toFixed(1)}s</div>
             </div>
             <div className="bg-gray-700 bg-opacity-30 p-2 rounded">
               <div className="text-gray-400 text-xs">Avg. Distance</div>
-              <div className="text-white font-medium">18m</div>
+              <div className="text-white font-medium">{avgSprintDistance}m</div>
             </div>
           </div>
         </div>
