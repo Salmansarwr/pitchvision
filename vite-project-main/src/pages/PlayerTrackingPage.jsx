@@ -109,7 +109,7 @@ function PlayerTrackingPage() {
           setMatchStats(response.data);
           // Set default player as the first player from Team A
           const teamAPlayers = Object.entries(response.data.player_stats || {})
-            .filter(([id, stats]) => stats.team === 'Team A');
+            .filter(([, stats]) => stats.team === 'Team A');
           if (teamAPlayers.length > 0) {
             setSelectedPlayerId(teamAPlayers[0][0]);
           }
@@ -197,10 +197,10 @@ function PlayerSelector({ matchStats, status, selectedPlayerId, setSelectedPlaye
 
   // Divide players into teams
   const teamAPlayers = matchStats ? Object.entries(matchStats.player_stats || {})
-    .filter(([id, stats]) => stats.team === 'Team A')
+    .filter(([, stats]) => stats.team === 'Team A')
     .map(([id]) => id) : [];
   const teamBPlayers = matchStats ? Object.entries(matchStats.player_stats || {})
-    .filter(([id, stats]) => stats.team === 'Team B')
+    .filter(([, stats]) => stats.team === 'Team B')
     .map(([id]) => id) : [];
 
   const players = team === 'Team A' ? teamAPlayers : teamBPlayers;
