@@ -1,9 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { 
   LineChart, Line, AreaChart, Area, BarChart, Bar, 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import Layout from '../components/shared/Layout';
+import { UserContext } from '../context/UserContext';
+import axios from 'axios';
+
+// Configuration for API calls
+const API_BASE_URL = 'http://127.0.0.1:8000'; // Change this for production
 
 // Simpler AnalysisCard component 
 function AnalysisCard({ title, stats }) {
@@ -27,12 +32,144 @@ function AnalysisCard({ title, stats }) {
 }
 
 function PlayerTrackingPage() {
+  const { videoId } = useContext(UserContext);
+  const [localVideoId, setLocalVideoId] = useState(videoId);
+  const [matchStats, setMatchStats] = useState(null);
+  const [results, setResults] = useState(null);
+  const [status, setStatus] = useState('idle'); // 'idle', 'fetching', 'completed', 'failed'
+  const [apiError, setApiError] = useState(null);
+  const [selectedPlayerId, setSelectedPlayerId] = useState(null); // Default player ID will be set after data fetch
+
+  // Fetch or validate video ID
+  useEffect(() => {
+    const fetchVideoData = async () => {
+      try {
+        setStatus('fetching');
+        const token = localStorage.getItem('token');
+        let selectedVideoId = videoId;
+
+        // Validate videoId from UserContext
+        if (videoId) {
+          const response = await axios.get(`${API_BASE_URL}/api/videos/${videoId}/`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (response.data.status !== 'completed') {
+            console.warn(`Video ID ${videoId} is not completed (status: ${response.data.status}). Fetching latest completed video.`);
+            selectedVideoId = null;
+          }
+        }
+
+        // If no valid videoId, fetch the latest completed video
+        if (!selectedVideoId) {
+          const videosResponse = await axios.get(`${API_BASE_URL}/api/videos/`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const completedVideo = videosResponse.data.find(video => video.status === 'completed');
+          if (completedVideo) {
+            selectedVideoId = completedVideo.id;
+          } else {
+            throw new Error('No completed videos found.');
+          }
+        }
+
+        setLocalVideoId(selectedVideoId);
+        const response = await axios.get(`${API_BASE_URL}/api/videos/${selectedVideoId}/`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setStatus(response.data.status);
+        checkStatus(selectedVideoId);
+      } catch (error) {
+        console.error('Failed to fetch video data:', error);
+        setStatus('failed');
+        setApiError(error.message || 'Failed to fetch video data. Please process a video first.');
+      }
+    };
+
+    fetchVideoData();
+  }, [videoId]);
+
+  // Check status periodically
+  useEffect(() => {
+    let interval;
+    if (localVideoId && (status === 'processing' || status === 'uploading')) {
+      interval = setInterval(() => checkStatus(localVideoId), 5000);
+    }
+    return () => clearInterval(interval);
+  }, [localVideoId, status]);
+
+  // Fetch match summary data when results are available
+  useEffect(() => {
+    if (results?.summary && status === 'completed') {
+      const fetchMatchSummary = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await axios.get(results.summary, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setMatchStats(response.data);
+          // Set default player as the first player from Team A
+          const teamAPlayers = Object.entries(response.data.player_stats || {})
+            .filter(([, stats]) => stats.team === 'Team A');
+          if (teamAPlayers.length > 0) {
+            setSelectedPlayerId(teamAPlayers[0][0]);
+          }
+        } catch (error) {
+          console.error('Failed to fetch match summary:', error);
+          setMatchStats(null);
+          setApiError('Failed to fetch match summary.');
+        }
+      };
+      fetchMatchSummary();
+    }
+  }, [results, status]);
+
+  const checkStatus = async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_BASE_URL}/api/videos/${id}/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setStatus(response.data.status);
+
+      if (response.data.status === 'completed') {
+        const ensureAbsoluteUrl = (url) => {
+          if (!url) return null;
+          return url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+        };
+
+        setResults({
+          summary: ensureAbsoluteUrl(response.data.summary_json_url),
+          objectTracks: ensureAbsoluteUrl(response.data.object_tracks_json_url),
+          keypointTracks: ensureAbsoluteUrl(response.data.keypoint_tracks_json_url),
+        });
+      }
+    } catch (error) {
+      console.error('Status check failed:', error);
+      setStatus('failed');
+      setApiError('Status check failed.');
+    }
+  };
+
   return (
     <Layout title="Player Tracking">
+      {apiError && (
+        <div className="mb-4 p-3 bg-red-500 bg-opacity-20 border border-red-500 rounded-md">
+          <p className="text-red-500 text-sm">{apiError}</p>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
-        <PlayerSelector />
+        <PlayerSelector 
+          matchStats={matchStats} 
+          status={status} 
+          selectedPlayerId={selectedPlayerId} 
+          setSelectedPlayerId={setSelectedPlayerId} 
+        />
         <div className="lg:col-span-2">
-          <PerformanceOverview />
+          <PerformanceOverview 
+            matchStats={matchStats} 
+            status={status} 
+            selectedPlayerId={selectedPlayerId} 
+          />
         </div>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
@@ -42,8 +179,8 @@ function PlayerTrackingPage() {
         <PositionalData />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-        <SpeedTracker />
-        <DistanceCoverage />
+        <SpeedTracker matchStats={matchStats} status={status} selectedPlayerId={selectedPlayerId} />
+        <DistanceCoverage matchStats={matchStats} status={status} selectedPlayerId={selectedPlayerId} />
         <div className="md:col-span-2 lg:col-span-1">
           <div className="grid grid-cols-1 gap-4">
             <PassingAnalysis />
@@ -55,10 +192,19 @@ function PlayerTrackingPage() {
   );
 }
 
-function PlayerSelector() {
-  const [team, setTeam] = useState('teamA');
-  const [player, setPlayer] = useState('Player #10');
-  
+function PlayerSelector({ matchStats, status, selectedPlayerId, setSelectedPlayerId }) {
+  const [team, setTeam] = useState('Team A');
+
+  // Divide players into teams
+  const teamAPlayers = matchStats ? Object.entries(matchStats.player_stats || {})
+    .filter(([, stats]) => stats.team === 'Team A')
+    .map(([id]) => id) : [];
+  const teamBPlayers = matchStats ? Object.entries(matchStats.player_stats || {})
+    .filter(([, stats]) => stats.team === 'Team B')
+    .map(([id]) => id) : [];
+
+  const players = team === 'Team A' ? teamAPlayers : teamBPlayers;
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
       <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
@@ -71,14 +217,20 @@ function PlayerSelector() {
           </label>
           <div className="flex space-x-2">
             <button 
-              onClick={() => setTeam('teamA')} 
-              className={`flex-1 py-2 rounded-md ${team === 'teamA' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
+              onClick={() => {
+                setTeam('Team A');
+                if (teamAPlayers.length > 0) setSelectedPlayerId(teamAPlayers[0]);
+              }} 
+              className={`flex-1 py-2 rounded-md ${team === 'Team A' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
             >
               Team A
             </button>
             <button 
-              onClick={() => setTeam('teamB')} 
-              className={`flex-1 py-2 rounded-md ${team === 'teamB' ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300'}`}
+              onClick={() => {
+                setTeam('Team B');
+                if (teamBPlayers.length > 0) setSelectedPlayerId(teamBPlayers[0]);
+              }} 
+              className={`flex-1 py-2 rounded-md ${team === 'Team B' ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-300'}`}
             >
               Team B
             </button>
@@ -86,36 +238,108 @@ function PlayerSelector() {
         </div>
         
         <div className="mb-4">
-          <label className="block text-gray-400 text SM font-medium mb-2">
+          <label className="block text-gray-400 text-sm font-medium mb-2">
             Player
           </label>
           <select 
             className="w-full px-3 py-2 bg-gray-700 text-white rounded-md custom-scrollbar"
-            value={player}
-            onChange={e => setPlayer(e.target.value)}
+            value={selectedPlayerId || ''}
+            onChange={e => setSelectedPlayerId(e.target.value)}
+            disabled={status !== 'completed' || !matchStats}
           >
-            <option>Player #10</option>
-            <option>Player #7</option>
-            <option>Player #9</option>
-            <option>Player #4</option>
-            <option>Player #8</option>
-            <option>Player #1</option>
+            {players.length > 0 ? (
+              players.map(id => (
+                <option key={id} value={id}>Player #{id}</option>
+              ))
+            ) : (
+              <option disabled>No players available</option>
+            )}
           </select>
         </div>
         
         <div className="flex flex-col items-center mt-6">
-          <div className={`h-24 w-24 rounded-full ${team === 'teamA' ? 'bg-blue-600' : 'bg-pink-600'} flex items-center justify-center shadow-lg`}>
-            <span className="text-white text-4xl font-bold">10</span>
+          <div className={`h-24 w-24 rounded-full ${team === 'Team A' ? 'bg-blue-600' : 'bg-pink-600'} flex items-center justify-center shadow-lg`}>
+            <span className="text-white text-4xl font-bold">{selectedPlayerId || '10'}</span>
           </div>
-          <h3 className="text-white text-xl font-medium mt-3">Juan Mendez</h3>
-          <p className="text-gray-400">Attacking Midfielder</p>
         </div>
       </div>
     </div>
   );
 }
 
-function PerformanceOverview() {
+function PerformanceOverview({ matchStats, status, selectedPlayerId }) {
+  if (status !== 'completed' || !matchStats || !selectedPlayerId) {
+    return (
+      <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+        <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
+          <h2 className="text-gray-400 font-semibold">PERFORMANCE OVERVIEW</h2>
+        </div>
+        <div className="p-4 text-gray-400 text-center">
+          {status === 'fetching' ? 'Fetching performance data...' : 'Performance data not available'}
+        </div>
+      </div>
+    );
+  }
+
+  const playerStats = matchStats.player_stats?.[selectedPlayerId] || {};
+  const totalDistance = playerStats.total_distance_m || 0; // Keep in meters
+  const maxSpeed = playerStats.max_speed_kmph || 0;
+
+  // Calculate sprints (speed > 25 km/h)
+  const sprints = playerStats.speed_history?.filter(speed => speed > 25).length || 0;
+
+  // Calculate acceleration and deceleration
+  let accelerations = 0;
+  let decelerations = 0;
+  if (playerStats.speed_history?.length) {
+    for (let i = 1; i < playerStats.speed_history.length; i++) {
+      const speedDiff = playerStats.speed_history[i] - playerStats.speed_history[i - 1];
+      // Assuming speed_history is sampled every second, speedDiff is in km/h per second
+      if (speedDiff > 5) accelerations++; // Significant speed increase
+      if (speedDiff < -5) decelerations++; // Significant speed decrease
+    }
+  }
+
+  // Calculate Fatigue Index
+  let fatigueIndex = 'N/A';
+  if (playerStats.speed_history?.length) {
+    // Default body weight (in kg)
+    const bodyWeight = 70;
+    // Convert speeds to m/s and calculate power (proportional to speed^3)
+    const sprintSpeeds = playerStats.speed_history
+      .map((speed, index) => ({ speed, index }))
+      .filter(({ speed }) => speed > 25) // Sprints only
+      .map(({ speed, index }) => ({
+        index,
+        speedMs: speed * (1000 / 3600), // Convert km/h to m/s
+      }))
+      .map(({ index, speedMs }) => ({
+        index,
+        power: bodyWeight * Math.pow(speedMs, 3), // Simplified power estimate
+      }));
+
+    if (sprintSpeeds.length >= 2) {
+      const maxPower = Math.max(...sprintSpeeds.map(s => s.power));
+      const minPower = Math.min(...sprintSpeeds.map(s => s.power));
+      fatigueIndex = ((maxPower - minPower) / maxPower) * 100;
+      fatigueIndex = fatigueIndex.toFixed(1) + '%';
+    } else {
+      fatigueIndex = 'Insufficient sprint data';
+    }
+  }
+
+  // Simulate speed history over time if available
+  const speedHistory = playerStats.speed_history?.length ? playerStats.speed_history.map((speed, index) => ({
+    minute: `${index * 15}-${(index + 1) * 15}`,
+    speed
+  })) : [
+    { minute: '0-15', speed: 28 },
+    { minute: '15-30', speed: 30 },
+    { minute: '30-45', speed: 26 },
+    { minute: '45-60', speed: 32 },
+    { minute: '60-75', speed: 29 },
+  ];
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
       <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
@@ -123,23 +347,17 @@ function PerformanceOverview() {
       </div>
       <div className="p-4 overflow-y-auto max-h-96 custom-scrollbar">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <MetricCard label="Distance" value="8.7 km" trend="+0.8" />
-          <MetricCard label="Top Speed" value="32.1 km/h" trend="+1.2" />
-          <MetricCard label="Sprints" value="23" trend="-2" isNegative={true} />
-          <MetricCard label="Accel/Decel" value="129/122" trend="+8" />
+          <MetricCard label="Distance" value={`${totalDistance.toFixed(0)} m`} />
+          <MetricCard label="Top Speed" value={`${maxSpeed.toFixed(1)} km/h`} />
+          <MetricCard label="Sprints" value={sprints} />
+          <MetricCard label="Accel/Decel" value={`${accelerations}/${decelerations}`} />
         </div>
         
         <div className="mt-4">
           <h3 className="text-gray-400 text-sm font-semibold mb-3">PERFORMANCE METRICS OVER TIME</h3>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart
-              data={[
-                { minute: '0-15', speed: 28, distance: 2.1 },
-                { minute: '15-30', speed: 30, distance: 2.3 },
-                { minute: '30-45', speed: 26, distance: 1.9 },
-                { minute: '45-60', speed: 32, distance: 2.4 },
-                { minute: '60-75', speed: 29, distance: 2.2 },
-              ]}
+              data={speedHistory}
               margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
             >
               <defs>
@@ -161,10 +379,14 @@ function PerformanceOverview() {
           <div className="bg-gray-700 bg-opacity-30 rounded-lg p-3">
             <div className="flex justify-between items-center mb-2">
               <h4 className="text-gray-400 text-sm">Fatigue Index</h4>
-              <span className="text-yellow-400 text-sm">72%</span>
+              <span className="text-yellow-400 text-sm">{fatigueIndex}</span>
             </div>
             <div className="h-2 w-full bg-gray-600 rounded-full">
-              <div className="h-full bg-yellow-500 rounded-full" style={{ width: '72%' }}></div>
+              {fatigueIndex !== 'N/A' && fatigueIndex !== 'Insufficient sprint data' ? (
+                <div className="h-full bg-yellow-500 rounded-full" style={{ width: fatigueIndex }}></div>
+              ) : (
+                <div className="h-full bg-gray-500 rounded-full" style={{ width: '0%' }}></div>
+              )}
             </div>
           </div>
         </div>
@@ -173,15 +395,12 @@ function PerformanceOverview() {
   );
 }
 
-function MetricCard({ label, value, trend, isNegative = false }) {
+function MetricCard({ label, value }) {
   return (
     <div className="bg-gray-700 bg-opacity-30 rounded-lg p-3">
       <div className="text-gray-400 text-sm">{label}</div>
       <div className="flex items-end justify-between">
         <div className="text-white text-xl font-semibold">{value}</div>
-        <div className={`text-sm ${isNegative ? 'text-red-400' : 'text-green-400'}`}>
-          {trend}
-        </div>
       </div>
     </div>
   );
@@ -212,7 +431,6 @@ function HeatmapView() {
       
       <div className="p-4 flex justify-center overflow-auto custom-scrollbar">
         <div className="relative w-full aspect-[16/9] max-w-4xl bg-gradient-to-r from-green-900 to-green-800 rounded-lg overflow-hidden">
-          {/* Field markings */}
           <div className="absolute inset-0 border-2 border-white border-opacity-30 m-2 rounded"></div>
           <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white bg-opacity-30"></div>
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-24 w-24 rounded-full border border-white border-opacity-30"></div>
@@ -221,7 +439,6 @@ function HeatmapView() {
           <div className="absolute top-1/3 left-0 h-1/3 w-1/12 border border-white border-opacity-30"></div>
           <div className="absolute top-1/3 right-0 h-1/3 w-1/12 border border-white border-opacity-30"></div>
           
-          {/* Heatmap visualization */}
           {view === 'heatmap' && (
             <>
               <div className="absolute top-1/3 left-1/2 h-32 w-32 bg-red-500 rounded-full opacity-20 blur-lg transform -translate-x-1/2 -translate-y-1/4"></div>
@@ -232,7 +449,6 @@ function HeatmapView() {
             </>
           )}
           
-          {/* Trajectory visualization */}
           {view === 'trajectory' && (
             <>
               <svg className="absolute inset-0 w-full h-full">
@@ -344,7 +560,65 @@ function PositionalData() {
   );
 }
 
-function SpeedTracker() {
+function SpeedTracker({ matchStats, status, selectedPlayerId }) {
+  if (status !== 'completed' || !matchStats || !selectedPlayerId) {
+    return (
+      <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+        <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
+          <h2 className="text-gray-400 font-semibold">SPEED ANALYSIS</h2>
+        </div>
+        <div className="p-4 text-gray-400 text-center">
+          {status === 'fetching' ? 'Fetching speed data...' : 'Speed data not available'}
+        </div>
+      </div>
+    );
+  }
+
+  const playerStats = matchStats.player_stats?.[selectedPlayerId] || {};
+  const topSpeed = playerStats.max_speed_kmph || 0;
+  const avgSpeed = playerStats.avg_speed_kmph || 0;
+
+  // Calculate sprints (speed > 25 km/h) and their durations
+  let sprintCount = 0;
+  let sprintDurations = [];
+  let sprintDistances = [];
+  let currentSprintDuration = 0;
+  const speedHistory = playerStats.speed_history || [];
+
+  for (let i = 0; i < speedHistory.length; i++) {
+    if (speedHistory[i] > 25) {
+      currentSprintDuration++;
+      // Assuming 1 second per sample, convert speed (km/h) to distance (m) per second
+      const speedMs = speedHistory[i] * (1000 / 3600); // Convert km/h to m/s
+      sprintDistances.push(speedMs); // Distance covered in 1 second
+    } else {
+      if (currentSprintDuration > 0) {
+        sprintCount++;
+        sprintDurations.push(currentSprintDuration);
+        currentSprintDuration = 0;
+      }
+    }
+  }
+  // Handle case where sprint ends at the last data point
+  if (currentSprintDuration > 0) {
+    sprintCount++;
+    sprintDurations.push(currentSprintDuration);
+  }
+
+  // Calculate max sprint duration (in seconds)
+  const maxSprintDuration = sprintDurations.length > 0 ? Math.max(...sprintDurations) : 0;
+
+  // Calculate average sprint distance
+  const totalSprintDistance = sprintDistances.reduce((sum, distance) => sum + distance, 0);
+  const avgSprintDistance = sprintDistances.length > 0 ? (totalSprintDistance / sprintDistances.length).toFixed(1) : 0;
+
+  // Calculate speed zone percentages
+  const runningCount = speedHistory.filter(speed => speed >= 14 && speed <= 25).length;
+  const sprintingCount = speedHistory.filter(speed => speed > 25).length;
+  const totalCount = speedHistory.length || 1; // Avoid division by zero
+  const runningPercentage = ((runningCount / totalCount) * 100).toFixed(0);
+  const sprintingPercentage = ((sprintingCount / totalCount) * 100).toFixed(0);
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
       <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
@@ -354,11 +628,11 @@ function SpeedTracker() {
         <div className="flex justify-between mb-4">
           <div>
             <div className="text-gray-400 text-xs">Top Speed</div>
-            <div className="text-white text-xl font-bold">32.1 km/h</div>
+            <div className="text-white text-xl font-bold">{topSpeed.toFixed(1)} km/h</div>
           </div>
           <div>
             <div className="text-gray-400 text-xs">Avg. Speed</div>
-            <div className="text-white text-xl font-bold">8.6 km/h</div>
+            <div className="text-white text-xl font-bold">{avgSpeed.toFixed(1)} km/h</div>
           </div>
         </div>
         
@@ -368,19 +642,16 @@ function SpeedTracker() {
             <BarChart
               layout="vertical"
               data={[
-                { name: 'Walking (0-7)', value: 38 },
-                { name: 'Jogging (7-14)', value: 42 },
-                { name: 'Running (14-21)', value: 25 },
-                { name: 'High-Speed (21-25)', value: 15 },
-                { name: 'Sprinting (25+)', value: 8 },
+                { name: 'Running (14-25)', value: runningPercentage },
+                { name: 'Sprinting (25+)', value: sprintingPercentage },
               ]}
               margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis type="number" stroke="#666" />
+              <XAxis type="number" stroke="#666" unit="%" />
               <YAxis dataKey="name" type="category" stroke="#666" tick={{ fontSize: 10 }} width={100} />
               <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: 'white' }} />
-              <Bar dataKey="value" fill="#3b82f6" barSize={10} radius={[0, 4, 4, 0]} />
+              <Bar dataKey="value" fill="#3b82f6" barSize={20} radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -390,15 +661,15 @@ function SpeedTracker() {
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="bg-gray-700 bg-opacity-30 p-2 rounded">
               <div className="text-gray-400 text-xs">Total</div>
-              <div className="text-white font-medium">23</div>
+              <div className="text-white font-medium">{sprintCount}</div>
             </div>
             <div className="bg-gray-700 bg-opacity-30 p-2 rounded">
               <div className="text-gray-400 text-xs">Max Duration</div>
-              <div className="text-white font-medium">4.2s</div>
+              <div className="text-white font-medium">{maxSprintDuration.toFixed(1)}s</div>
             </div>
             <div className="bg-gray-700 bg-opacity-30 p-2 rounded">
               <div className="text-gray-400 text-xs">Avg. Distance</div>
-              <div className="text-white font-medium">18m</div>
+              <div className="text-white font-medium">{avgSprintDistance}m</div>
             </div>
           </div>
         </div>
@@ -407,7 +678,35 @@ function SpeedTracker() {
   );
 }
 
-function DistanceCoverage() {
+function DistanceCoverage({ matchStats, status, selectedPlayerId }) {
+  if (status !== 'completed' || !matchStats || !selectedPlayerId) {
+    return (
+      <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+        <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
+          <h2 className="text-gray-400 font-semibold">DISTANCE COVERAGE</h2>
+        </div>
+        <div className="p-4 text-gray-400 text-center">
+          {status === 'fetching' ? 'Fetching distance data...' : 'Distance data not available'}
+        </div>
+      </div>
+    );
+  }
+
+  const playerStats = matchStats.player_stats?.[selectedPlayerId] || {};
+  const totalDistance = playerStats.total_distance_m || 0; // Keep in meters
+  // Simulate high-intensity distance as not provided
+  const highIntensityDistance = 2400; // Placeholder in meters
+
+  // Simulate distance per 15 min if not available
+  const distanceData = [
+    { period: '0-15', distance: 1800 },
+    { period: '15-30', distance: 1900 },
+    { period: '30-45', distance: 1700 },
+    { period: '45-60', distance: 1400 },
+    { period: '60-75', distance: 1200 },
+    { period: '75-90', distance: 700 },
+  ];
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
       <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
@@ -417,11 +716,11 @@ function DistanceCoverage() {
         <div className="flex justify-between mb-4">
           <div>
             <div className="text-gray-400 text-xs">Total Distance</div>
-            <div className="text-white text-xl font-bold">8.7 km</div>
+            <div className="text-white text-xl font-bold">{totalDistance.toFixed(0)} m</div>
           </div>
           <div>
             <div className="text-gray-400 text-xs">High-Intensity Distance</div>
-            <div className="text-white text-xl font-bold">2.4 km</div>
+            <div className="text-white text-xl font-bold">{highIntensityDistance.toFixed(0)} m</div>
           </div>
         </div>
         
@@ -429,14 +728,7 @@ function DistanceCoverage() {
           <h3 className="text-gray-400 text-xs font-semibold mb-1">DISTANCE PER 15 MIN</h3>
           <ResponsiveContainer width="100%" height={100}>
             <LineChart
-              data={[
-                { period: '0-15', distance: 1.8 },
-                { period: '15-30', distance: 1.9 },
-                { period: '30-45', distance: 1.7 },
-                { period: '45-60', distance: 1.4 },
-                { period: '60-75', distance: 1.2 },
-                { period: '75-90', distance: 0.7 },
-              ]}
+              data={distanceData}
               margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
@@ -460,7 +752,6 @@ function DistanceCoverage() {
                 <div className="h-full bg-green-500 rounded-full" style={{ width: '68%' }}></div>
               </div>
             </div>
-            {/* Removed "vs. Last Match" as requested */}
           </div>
         </div>
       </div>
@@ -469,7 +760,6 @@ function DistanceCoverage() {
 }
 
 function PassingAnalysis() {
-  // Removed "Key Passes" as requested
   const passingStats = [
     { label: 'Passes', value: '27/35' },
     { label: 'Accuracy', value: '77%' }

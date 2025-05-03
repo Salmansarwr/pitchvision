@@ -100,7 +100,7 @@ function Sidebar() {
   );
 }
 
-function SidebarItem({ title, icon, to, active = false, isSidebarOpen, onClick }) {
+function SidebarItem({ title, icon,  active = false, isSidebarOpen, onClick }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (

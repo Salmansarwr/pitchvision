@@ -154,9 +154,9 @@ const AboutPage = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold mb-2">DeepSORT Tracking</h3>
+              <h3 className="text-xl font-semibold mb-2">ByteTrack Tracking</h3>
               <p className="text-gray-300">
-                Combined with DeepSORT tracking algorithms, our system maintains player identity across frames, allowing for continuous tracking of movements, interactions, and performance metrics throughout the match.
+                Combined with ByteTrack tracking algorithms, our system maintains player identity across frames, allowing for continuous tracking of movements, interactions, and performance metrics throughout the match.
               </p>
             </div>
             <div className="bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700 transition-transform hover:transform hover:scale-105">

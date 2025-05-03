@@ -1,8 +1,9 @@
-// src/components/shared/Header.jsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useContext } from 'react';
+import { UserContext } from '../../context/UserContext';
 import LogoGlow from './LogoGlow';
 
 function Header({ title = "Dashboard" }) {
+  const { user } = useContext(UserContext);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -20,9 +21,18 @@ function Header({ title = "Dashboard" }) {
     };
   }, []);
 
+  // Get user initials from first_name and last_name
+  const getInitials = () => {
+    if (!user?.first_name && !user?.last_name) return 'U';
+    const firstInitial = user?.first_name?.charAt(0)?.toUpperCase() || '';
+    const lastInitial = user?.last_name?.charAt(0)?.toUpperCase() || '';
+    return `${firstInitial}${lastInitial}` || 'U';
+  };
+
   const handleLogout = () => {
-    // Add your logout logic here
     localStorage.removeItem('user');
+    localStorage.removeItem('profile');
+    localStorage.removeItem('token');
     window.location.href = '/login';
   };
 
@@ -39,26 +49,29 @@ function Header({ title = "Dashboard" }) {
             className="flex items-center focus:outline-none"
           >
             <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-medium">
-              JD
+              {getInitials()}
             </div>
-            <span className="ml-2 text-gray-300 text-sm">John Doe</span>
             <svg 
               xmlns="http://www.w3.org/2000/svg" 
               className={`h-4 w-4 ml-1 text-gray-400 transition-transform duration-200 ${isDropdownOpen ? 'transform rotate-180' : ''}`} 
               viewBox="0 0 20 20" 
               fill="currentColor"
             >
-              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              <path 
+                fillRule="evenodd" 
+                d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" 
+                clipRule="evenodd" 
+              />
             </svg>
           </button>
 
           {isDropdownOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-md shadow-lg py-1 z-50 border border-gray-700">
-              <a href="/profile" className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
-                Your Profile
-              </a>
-              <a href="/settings" className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
-                Settings
+              <a 
+                href="/settings" 
+                className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+              >
+                Profile
               </a>
               <div className="border-t border-gray-700 my-1"></div>
               <button
