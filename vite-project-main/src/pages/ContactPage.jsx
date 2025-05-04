@@ -7,29 +7,21 @@ const ContactPage = () => {
     lastName: '',
     email: '',
     phone: '',
-    organization: '',
-    message: '',
-    inquiryType: 'general'
+    message: ''
   });
   
   const [formStatus, setFormStatus] = useState({
     submitted: false,
-    error: false
+    error: false,
+    loading: false
   });
   
   // Handle hash navigation for direct links (like FAQ section)
   useEffect(() => {
-    // Check if there is a hash in the URL
     if (window.location.hash) {
-      // Get the hash without the '#'
       const id = window.location.hash.substring(1);
-      
-      // Find the element with the corresponding ID
       const element = document.getElementById(id);
-      
-      // If the element exists, scroll to it
       if (element) {
-        // Add a slight delay to ensure the page is fully loaded
         setTimeout(() => {
           element.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 300);
@@ -47,33 +39,61 @@ const ContactPage = () => {
   };
 
   // Handle form submission
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Here you would typically send the data to your backend
+    setFormStatus({ ...formStatus, loading: true });
     
-    // For demo purposes, we'll just set the status
-    setFormStatus({
-      submitted: true,
-      error: false
-    });
-    
-    // Reset form after successful submission
-    setTimeout(() => {
-      setFormData({
-        firstName: '',
-        lastName: '',
-        email: '',
-        phone: '',
-        organization: '',
-        message: '',
-        inquiryType: 'general'
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/videos/contact/', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+          message: formData.message
+        }),
       });
       
+      const data = await response.json();
+      
+      if (response.ok) {
+        setFormStatus({
+          submitted: true,
+          error: false,
+          loading: false
+        });
+        
+        // Reset form after successful submission
+        setTimeout(() => {
+          setFormData({
+            firstName: '',
+            lastName: '',
+            email: '',
+            phone: '',
+            message: ''
+          });
+          
+          setFormStatus({
+            submitted: false,
+            error: false,
+            loading: false
+          });
+        }, 5000);
+      } else {
+        throw new Error(data.message || 'Failed to submit form');
+      }
+    } catch (error) {
+      console.error('Error submitting form:', error);
       setFormStatus({
         submitted: false,
-        error: false
+        error: error.message || 'Failed to submit form. Please try again.',
+        loading: false
       });
-    }, 5000);
+    }
   };
 
   return (
@@ -103,7 +123,7 @@ const ContactPage = () => {
           <nav className="hidden md:flex space-x-12">
             <a href="/" className="text-gray-300 hover:text-white transition text-lg">Home</a>
             <a href="/about" className="text-gray-300 hover:text-white transition text-lg">About</a>
-            <a href="/contact" className="text-white border-b-2 border-indigo-500 font-medium transition text-lg">Contact</a>
+                         <a href="/contact" className="text-white border-b-2 border-indigo-500 font-medium transition text-lg">Contact</a>
           </nav>
           <div className="flex items-center space-x-4">
             <a
@@ -154,6 +174,11 @@ const ContactPage = () => {
                     </svg>
                     <span className="text-green-300 font-medium">Message sent successfully! We'll get back to you soon.</span>
                   </div>
+                </div>
+              ) : null}
+              {formStatus.error ? (
+                <div className="bg-red-900 bg-opacity-50 border border-red-500 rounded-lg p-4 mb-6">
+                  <span className="text-red-300 font-medium">{formStatus.error}</span>
                 </div>
               ) : null}
               <form onSubmit={handleSubmit}>
@@ -218,41 +243,6 @@ const ContactPage = () => {
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <label className="block text-gray-300 text-sm font-medium mb-2" htmlFor="organization">
-                      Organization/Team
-                    </label>
-                    <input 
-                      type="text" 
-                      id="organization"
-                      name="organization"
-                      value={formData.organization}
-                      onChange={handleChange}
-                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-300 text-sm font-medium mb-2" htmlFor="inquiryType">
-                      Inquiry Type <span className="text-indigo-400">*</span>
-                    </label>
-                    <select 
-                      id="inquiryType"
-                      name="inquiryType"
-                      value={formData.inquiryType}
-                      onChange={handleChange}
-                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
-                      required
-                    >
-                      <option value="general">General Inquiry</option>
-                      <option value="sales">Sales</option>
-                      <option value="support">Technical Support</option>
-                      <option value="demo">Request a Demo</option>
-                      <option value="partnership">Partnership</option>
-                    </select>
-                  </div>
-                </div>
-                
                 <div className="mb-6">
                   <label className="block text-gray-300 text-sm font-medium mb-2" htmlFor="message">
                     Message <span className="text-indigo-400">*</span>
@@ -282,9 +272,12 @@ const ContactPage = () => {
                 
                 <button 
                   type="submit" 
-                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition shadow-lg"
+                  disabled={formStatus.loading}
+                  className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition shadow-lg ${
+                    formStatus.loading ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Send Message
+                  {formStatus.loading ? 'Sending...' : 'Send Message'}
                 </button>
               </form>
             </div>
@@ -395,8 +388,7 @@ const ContactPage = () => {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="container mx-auto px-4 pb-16"></section>
-      <section className="container mx-auto px-4 pb-16">
+      <section id="faq" className="container mx-auto px-4 pb-16">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold mb-4">
             Frequently Asked Questions

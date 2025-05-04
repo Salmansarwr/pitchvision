@@ -1,11 +1,11 @@
-# video_processor/views.py
+# video_analysis_backend/video_processor/views.py
 import os
 from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Video, EventFrame
-from .serializers import VideoSerializer
+from .models import Video, EventFrame, ContactSubmission
+from .serializers import VideoSerializer, ContactSubmissionSerializer
 import threading
 from .scripts.main import main_processing
 
@@ -39,6 +39,18 @@ class VideoUploadView(APIView):
         videos = Video.objects.all()
         serializer = VideoSerializer(videos, many=True, context={'request': request})
         return Response(serializer.data)
+
+# Add ContactSubmissionView
+class ContactSubmissionView(APIView):
+    def post(self, request):
+        serializer = ContactSubmissionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Contact form submitted successfully',
+                'data': serializer.data
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 def process_video(video_instance):
     try:

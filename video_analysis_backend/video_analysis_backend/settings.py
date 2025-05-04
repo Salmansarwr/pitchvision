@@ -119,3 +119,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# OR you can use File Email Backend to save emails to files
+# EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
+# EMAIL_FILE_PATH = '/path/to/email/directory'  # specify where to save emails
+
+# Admin email (this stays the same)
+ADMIN_EMAIL = 'hammadyasin630@gmail.com'
+DEFAULT_FROM_EMAIL = 'Pitch Vision <noreply@pitchvision.com>'

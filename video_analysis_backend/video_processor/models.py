@@ -1,4 +1,4 @@
-# video_processor/models.py
+# video_analysis_backend/video_processor/models.py
 from django.db import models
 from django.utils import timezone
 
@@ -20,3 +20,19 @@ class EventFrame(models.Model):
     frame_image = models.FileField(upload_to='output/events/', null=True, blank=True)
     frame_number = models.IntegerField(null=True, blank=True)  # New field for frame index
     created_at = models.DateTimeField(default=timezone.now)
+
+# Add the ContactSubmission model
+class ContactSubmission(models.Model):
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20, blank=True)
+    message = models.TextField()
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return f"{self.first_name} {self.last_name} - {self.email}"
+    
+    class Meta:
+        ordering = ['-submitted_at']
