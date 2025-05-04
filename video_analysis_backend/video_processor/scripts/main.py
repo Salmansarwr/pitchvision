@@ -228,12 +228,12 @@ def main_processing(
         print(f"Frame {frame_idx}: Ball projection = ({x:.2f}, {y:.2f})")
         # Left goal (Team B scores): beyond [32, 122], [32, 229]
         if x < 32 and 122 <= y <= 229:
-            print(f"Frame {frame_idx}: Goal detected for Team B (Left goal)")
-            return True, "Team B"
+            print(f"Frame {frame_idx}: Goal detected for Team A (Left goal)")
+            return True, "Team A"
         # Right goal (Team A scores): beyond [495, 122], [495, 229]
         if x > 495 and 122 <= y <= 229:
-            print(f"Frame {frame_idx}: Goal detected for Team A (Right goal)")
-            return True, "Team A"
+            print(f"Frame {frame_idx}: Goal detected for Team B (Right goal)")
+            return True, "Team B"
         print(f"Frame {frame_idx}: No goal - Ball not beyond goal box corners")
         return False, None
 

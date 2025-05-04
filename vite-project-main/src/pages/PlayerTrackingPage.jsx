@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { 
   LineChart, Line, AreaChart, Area, BarChart, Bar, 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
@@ -9,6 +9,102 @@ import axios from 'axios';
 
 // Configuration for API calls
 const API_BASE_URL = 'http://127.0.0.1:8000'; // Change this for production
+
+// Field dimensions
+const FIELD_WIDTH = 527;
+const FIELD_HEIGHT = 351;
+
+// Heatmap utility functions
+const fetchObjectTracks = async (objectTracksUrl) => {
+  try {
+    const response = await axios.get(objectTracksUrl);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching object tracks:', error);
+    return [];
+  }
+};
+
+const extractPlayerPositions = (objectTracks, playerId) => {
+  const positions = [];
+  objectTracks.forEach((frameData, frameIdx) => {
+    if (frameData?.player && frameData.player[playerId]) {
+      const playerInfo = frameData.player[playerId];
+      if (playerInfo.projection && Array.isArray(playerInfo.projection)) {
+        const [x, y] = playerInfo.projection;
+        if ((x !== 0 || y !== 0) && x >= 0 && y >= 0) {
+          positions.push({
+            x: x,
+            y: y, // Flip Y-axis
+            time: frameIdx / 30, // Assuming 30 fps
+            speed: playerInfo.speed || 0
+          });
+        }
+      }
+    }
+  });
+  return positions;
+};
+
+const generateHeatmapData = (positions, gridSize = 20) => {
+  const heatmap = Array(gridSize).fill().map(() => Array(gridSize).fill(0));
+  const xStep = FIELD_WIDTH / gridSize;
+  const yStep = FIELD_HEIGHT / gridSize;
+  positions.forEach(pos => {
+    const xIndex = Math.min(Math.floor(pos.x / xStep), gridSize - 1);
+    const yIndex = Math.min(Math.floor(pos.y / yStep), gridSize - 1);
+    if (xIndex >= 0 && yIndex >= 0) {
+      heatmap[yIndex][xIndex]++;
+    }
+  });
+  return heatmap;
+};
+
+const calculateZoneDistribution = (positions) => {
+  const zones = {
+    defensive: 0,
+    middle: 0,
+    attacking: 0
+  };
+  positions.forEach(pos => {
+    if (pos.x < FIELD_WIDTH / 3) {
+      zones.defensive++;
+    } else if (pos.x < (2 * FIELD_WIDTH) / 3) {
+      zones.middle++;
+    } else {
+      zones.attacking++;
+    }
+  });
+  const total = positions.length || 1;
+  return {
+    defensive: Math.round((zones.defensive / total) * 100),
+    middle: Math.round((zones.middle / total) * 100),
+    attacking: Math.round((zones.attacking / total) * 100)
+  };
+};
+
+const calculateFlankPreference = (positions) => {
+  const flanks = {
+    left: 0,
+    center: 0,
+    right: 0
+  };
+  positions.forEach(pos => {
+    if (pos.y < FIELD_HEIGHT / 3) {
+      flanks.left++;
+    } else if (pos.y < (2 * FIELD_HEIGHT) / 3) {
+      flanks.center++;
+    } else {
+      flanks.right++;
+    }
+  });
+  const total = positions.length || 1;
+  return {
+    left: Math.round((flanks.left / total) * 100),
+    center: Math.round((flanks.center / total) * 100),
+    right: Math.round((flanks.right / total) * 100)
+  };
+};
 
 // Simpler AnalysisCard component 
 function AnalysisCard({ title, stats }) {
@@ -174,19 +270,15 @@ function PlayerTrackingPage() {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
         <div className="lg:col-span-2">
-          <HeatmapView />
+          <HeatmapView 
+            selectedPlayerId={selectedPlayerId}
+            results={results}
+          />
         </div>
-        <PositionalData />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-        <SpeedTracker matchStats={matchStats} status={status} selectedPlayerId={selectedPlayerId} />
-        <DistanceCoverage matchStats={matchStats} status={status} selectedPlayerId={selectedPlayerId} />
-        <div className="md:col-span-2 lg:col-span-1">
-          <div className="grid grid-cols-1 gap-4">
-            <PassingAnalysis />
-            <GoalsScored />
-          </div>
-        </div>
+        <PositionalData 
+          selectedPlayerId={selectedPlayerId}
+          results={results}
+        />
       </div>
     </Layout>
   );
@@ -406,29 +498,80 @@ function MetricCard({ label, value }) {
   );
 }
 
-function HeatmapView() {
-  const [view, setView] = useState('heatmap');
-  
+function HeatmapView({ selectedPlayerId, results }) {
+  const [heatmapData, setHeatmapData] = useState(null);
+  const [zoneDistribution, setZoneDistribution] = useState({
+    defensive: 0,
+    middle: 0,
+    attacking: 0
+  });
+  const [flankPreference, setFlankPreference] = useState({
+    left: 0,
+    center: 0,
+    right: 0
+  });
+
+  const fetchHeatmapData = useCallback(async () => {
+    try {
+      const objectTracks = await fetchObjectTracks(results.objectTracks);
+      const playerPositions = extractPlayerPositions(objectTracks, selectedPlayerId);
+      const heatmap = generateHeatmapData(playerPositions);
+      setHeatmapData(heatmap);
+      
+      const zones = calculateZoneDistribution(playerPositions);
+      setZoneDistribution(zones);
+      
+      const flanks = calculateFlankPreference(playerPositions);
+      setFlankPreference(flanks);
+    } catch (error) {
+      console.error('Error processing heatmap data:', error);
+    }
+  }, [results?.objectTracks, selectedPlayerId]);
+
+  useEffect(() => {
+    if (selectedPlayerId && results?.objectTracks) {
+      fetchHeatmapData();
+    }
+  }, [selectedPlayerId, results, fetchHeatmapData]);
+
+  const renderHeatmap = () => {
+    if (!heatmapData) return null;
+    const maxValue = Math.max(...heatmapData.flat());
+
+    return heatmapData.map((row, rowIndex) => (
+      row.map((value, colIndex) => {
+        const intensity = value / maxValue;
+        const opacity = Math.min(intensity * 0.8, 0.8);
+        
+        let color;
+        if (intensity < 0.2) color = 'rgba(30, 160, 80, '; // Darker green
+        else if (intensity < 0.4) color = 'rgba(220, 180, 50, '; // Darker yellow
+        else if (intensity < 0.6) color = 'rgba(210, 120, 50, '; // Darker orange
+        else color = 'rgba(200, 50, 50, '; // Darker red
+        
+        return (
+          <div
+            key={`${rowIndex}-${colIndex}`}
+            className="absolute"
+            style={{
+              left: `${(colIndex / 20) * 100}%`,
+              top: `${(rowIndex / 20) * 100}%`,
+              width: '5%',
+              height: '5%',
+              backgroundColor: value > 0 ? color + opacity + ')' : 'transparent',
+              pointerEvents: 'none'
+            }}
+          />
+        );
+      })
+    ));
+  };
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-      <div className="px-4 py-3 bg-gray-700 bg-opacity-50 flex justify-between items-center">
+      <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
         <h2 className="text-gray-400 font-semibold">PLAYER MOVEMENT ANALYSIS</h2>
-        <div className="flex">
-          <button 
-            onClick={() => setView('heatmap')} 
-            className={`px-3 py-1 text-sm rounded-l-md ${view === 'heatmap' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300'}`}
-          >
-            Heatmap
-          </button>
-          <button 
-            onClick={() => setView('trajectory')} 
-            className={`px-3 py-1 text-sm rounded-r-md ${view === 'trajectory' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300'}`}
-          >
-            Trajectory
-          </button>
-        </div>
       </div>
-      
       <div className="p-4 flex justify-center overflow-auto custom-scrollbar">
         <div className="relative w-full aspect-[16/9] max-w-4xl bg-gradient-to-r from-green-900 to-green-800 rounded-lg overflow-hidden">
           <div className="absolute inset-0 border-2 border-white border-opacity-30 m-2 rounded"></div>
@@ -439,41 +582,9 @@ function HeatmapView() {
           <div className="absolute top-1/3 left-0 h-1/3 w-1/12 border border-white border-opacity-30"></div>
           <div className="absolute top-1/3 right-0 h-1/3 w-1/12 border border-white border-opacity-30"></div>
           
-          {view === 'heatmap' && (
-            <>
-              <div className="absolute top-1/3 left-1/2 h-32 w-32 bg-red-500 rounded-full opacity-20 blur-lg transform -translate-x-1/2 -translate-y-1/4"></div>
-              <div className="absolute top-2/5 left-3/5 h-40 w-40 bg-red-500 rounded-full opacity-30 blur-lg transform -translate-x-1/2 -translate-y-1/4"></div>
-              <div className="absolute top-1/2 left-2/3 h-44 w-44 bg-red-500 rounded-full opacity-40 blur-lg transform -translate-x-1/2 -translate-y-1/2"></div>
-              <div className="absolute top-3/5 left-3/4 h-36 w-36 bg-red-500 rounded-full opacity-25 blur-lg transform -translate-x-1/2 -translate-y-1/2"></div>
-              <div className="absolute top-1/2 left-3/4 h-20 w-20 bg-red-500 rounded-full opacity-15 blur-lg transform -translate-x-1/2 -translate-y-1/2"></div>
-            </>
-          )}
-          
-          {view === 'trajectory' && (
-            <>
-              <svg className="absolute inset-0 w-full h-full">
-                <path 
-                  d="M 200,150 C 250,180 300,160 350,200 S 450,250 500,220 S 550,180 600,210" 
-                  fill="none" 
-                  stroke="#3b82f6" 
-                  strokeWidth="3"
-                  strokeDasharray="5,5"
-                  opacity="0.7"
-                />
-                <circle cx="200" cy="150" r="5" fill="#3b82f6" />
-                <circle cx="350" cy="200" r="5" fill="#3b82f6" />
-                <circle cx="500" cy="220" r="5" fill="#3b82f6" />
-                <circle cx="600" cy="210" r="5" fill="#3b82f6" />
-              </svg>
-              
-              <div className="absolute h-6 w-6 bg-blue-600 rounded-full top-1/4 left-1/3 flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 shadow-lg">
-                <span className="text-white text-xs font-bold">10</span>
-              </div>
-            </>
-          )}
+          {renderHeatmap()}
         </div>
       </div>
-      
       <div className="p-4 border-t border-gray-700">
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -481,33 +592,32 @@ function HeatmapView() {
             <div className="grid grid-cols-3 gap-1 text-center text-xs">
               <div className="bg-gray-700 p-2 rounded">
                 <div className="text-gray-400">Def</div>
-                <div className="text-white font-medium">12%</div>
+                <div className="text-white font-medium">{zoneDistribution.defensive}%</div>
               </div>
               <div className="bg-gray-700 p-2 rounded">
                 <div className="text-gray-400">Mid</div>
-                <div className="text-white font-medium">38%</div>
+                <div className="text-white font-medium">{zoneDistribution.middle}%</div>
               </div>
               <div className="bg-gray-700 p-2 rounded">
                 <div className="text-gray-400">Att</div>
-                <div className="text-white font-medium">50%</div>
+                <div className="text-white font-medium">{zoneDistribution.attacking}%</div>
               </div>
             </div>
           </div>
-          
           <div>
             <h3 className="text-gray-400 text-sm font-semibold mb-2">FLANK PREFERENCE</h3>
             <div className="grid grid-cols-3 gap-1 text-center text-xs">
               <div className="bg-gray-700 p-2 rounded">
                 <div className="text-gray-400">Left</div>
-                <div className="text-white font-medium">35%</div>
+                <div className="text-white font-medium">{flankPreference.left}%</div>
               </div>
               <div className="bg-gray-700 p-2 rounded">
                 <div className="text-gray-400">Center</div>
-                <div className="text-white font-medium">45%</div>
+                <div className="text-white font-medium">{flankPreference.center}%</div>
               </div>
               <div className="bg-gray-700 p-2 rounded">
                 <div className="text-gray-400">Right</div>
-                <div className="text-white font-medium">20%</div>
+                <div className="text-white font-medium">{flankPreference.right}%</div>
               </div>
             </div>
           </div>
@@ -517,7 +627,94 @@ function HeatmapView() {
   );
 }
 
-function PositionalData() {
+function PositionalData({ selectedPlayerId, results }) {
+  const [positionalData, setPositionalData] = useState({
+    avgPosition: { x: 0, y: 0 },
+    positionVariance: 0
+  });
+
+  const fetchPositionalData = useCallback(async () => {
+    try {
+      const objectTracks = await fetchObjectTracks(results.objectTracks);
+      const positions = [];
+
+      // Extract bounding box centers
+      objectTracks.forEach((frameData) => {
+        if (frameData?.player && frameData.player[selectedPlayerId]) {
+          const playerInfo = frameData.player[selectedPlayerId];
+          if (playerInfo.bbox && Array.isArray(playerInfo.bbox)) {
+            const [x1, y1, x2, y2] = playerInfo.bbox;
+            const xCenter = (x1 + x2) / 2;
+            const yCenter = (y1 + y2) / 2;
+            if (xCenter >= 0 && yCenter >= 0) {
+              positions.push({
+                x: xCenter,
+                y: yCenter
+              });
+            }
+          }
+        }
+      });
+
+      if (positions.length === 0) {
+        setPositionalData({
+          avgPosition: { x: 0, y: 0 },
+          positionVariance: 0
+        });
+        return;
+      }
+
+      // Convert to meters (assuming field is 105m x 68m)
+      const xScale = 105 / FIELD_WIDTH; // meters per pixel
+      const yScale = 68 / FIELD_HEIGHT; // meters per pixel
+
+      const positionsInMeters = positions.map(pos => ({
+        x: pos.x * xScale,
+        y: pos.y * yScale
+      }));
+
+      // Calculate average position
+      const avgX = positionsInMeters.reduce((sum, pos) => sum + pos.x, 0) / positionsInMeters.length;
+      const avgY = positionsInMeters.reduce((sum, pos) => sum + pos.y, 0) / positionsInMeters.length;
+
+      // Calculate variance
+      const varianceX = positionsInMeters.reduce((sum, pos) => sum + Math.pow(pos.x - avgX, 2), 0) / positionsInMeters.length;
+      const varianceY = positionsInMeters.reduce((sum, pos) => sum + Math.pow(pos.y - avgY, 2), 0) / positionsInMeters.length;
+      const combinedVariance = (varianceX + varianceY) / 2;
+
+      // Classify variance
+      const varianceThresholds = {
+        low: 10,
+        medium: 20
+      };
+      let varianceLabel;
+      if (combinedVariance < varianceThresholds.low) {
+        varianceLabel = 'Low';
+      } else if (combinedVariance < varianceThresholds.medium) {
+        varianceLabel = 'Medium';
+      } else {
+        varianceLabel = 'High';
+      }
+
+      setPositionalData({
+        avgPosition: { x: avgX.toFixed(1), y: avgY.toFixed(1) },
+        positionVariance: `${varianceLabel} (${combinedVariance.toFixed(1)})`
+      });
+    } catch (error) {
+      console.error('Error processing positional data:', error);
+      setPositionalData({
+        avgPosition: { x: 0, y: 0 },
+        positionVariance: 'N/A'
+      });
+    }
+  }, [results?.objectTracks, selectedPlayerId]);
+
+  useEffect(() => {
+    if (selectedPlayerId && results?.objectTracks) {
+      fetchPositionalData();
+    }
+  }, [selectedPlayerId, results, fetchPositionalData]);
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
       <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
@@ -529,273 +726,13 @@ function PositionalData() {
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-gray-700 bg-opacity-30 rounded-lg p-3">
               <div className="text-gray-400 text-xs">Avg Position (X, Y)</div>
-              <div className="text-white font-medium">68.2m, 42.5m</div>
+              <div className="text-white font-medium">{`${positionalData.avgPosition.x}m, ${positionalData.avgPosition.y}m`}</div>
             </div>
             <div className="bg-gray-700 bg-opacity-30 rounded-lg p-3">
               <div className="text-gray-400 text-xs">Position Variance</div>
-              <div className="text-white font-medium">High (8.3)</div>
+              <div className="text-white font-medium">{positionalData.positionVariance}</div>
             </div>
           </div>
-        </div>
-        
-        <div>
-          <h3 className="text-gray-400 text-sm font-semibold mb-2">OFF-BALL MOVEMENT</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Support Runs</span>
-              <span className="text-white">42</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Overlaps</span>
-              <span className="text-white">15</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Half-Space Usage</span>
-              <span className="text-white">45%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SpeedTracker({ matchStats, status, selectedPlayerId }) {
-  if (status !== 'completed' || !matchStats || !selectedPlayerId) {
-    return (
-      <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-        <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
-          <h2 className="text-gray-400 font-semibold">SPEED ANALYSIS</h2>
-        </div>
-        <div className="p-4 text-gray-400 text-center">
-          {status === 'fetching' ? 'Fetching speed data...' : 'Speed data not available'}
-        </div>
-      </div>
-    );
-  }
-
-  const playerStats = matchStats.player_stats?.[selectedPlayerId] || {};
-  const topSpeed = playerStats.max_speed_kmph || 0;
-  const avgSpeed = playerStats.avg_speed_kmph || 0;
-
-  // Calculate sprints (speed > 25 km/h) and their durations
-  let sprintCount = 0;
-  let sprintDurations = [];
-  let sprintDistances = [];
-  let currentSprintDuration = 0;
-  const speedHistory = playerStats.speed_history || [];
-
-  for (let i = 0; i < speedHistory.length; i++) {
-    if (speedHistory[i] > 25) {
-      currentSprintDuration++;
-      // Assuming 1 second per sample, convert speed (km/h) to distance (m) per second
-      const speedMs = speedHistory[i] * (1000 / 3600); // Convert km/h to m/s
-      sprintDistances.push(speedMs); // Distance covered in 1 second
-    } else {
-      if (currentSprintDuration > 0) {
-        sprintCount++;
-        sprintDurations.push(currentSprintDuration);
-        currentSprintDuration = 0;
-      }
-    }
-  }
-  // Handle case where sprint ends at the last data point
-  if (currentSprintDuration > 0) {
-    sprintCount++;
-    sprintDurations.push(currentSprintDuration);
-  }
-
-  // Calculate max sprint duration (in seconds)
-  const maxSprintDuration = sprintDurations.length > 0 ? Math.max(...sprintDurations) : 0;
-
-  // Calculate average sprint distance
-  const totalSprintDistance = sprintDistances.reduce((sum, distance) => sum + distance, 0);
-  const avgSprintDistance = sprintDistances.length > 0 ? (totalSprintDistance / sprintDistances.length).toFixed(1) : 0;
-
-  // Calculate speed zone percentages
-  const runningCount = speedHistory.filter(speed => speed >= 14 && speed <= 25).length;
-  const sprintingCount = speedHistory.filter(speed => speed > 25).length;
-  const totalCount = speedHistory.length || 1; // Avoid division by zero
-  const runningPercentage = ((runningCount / totalCount) * 100).toFixed(0);
-  const sprintingPercentage = ((sprintingCount / totalCount) * 100).toFixed(0);
-
-  return (
-    <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-      <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
-        <h2 className="text-gray-400 font-semibold">SPEED ANALYSIS</h2>
-      </div>
-      <div className="p-4">
-        <div className="flex justify-between mb-4">
-          <div>
-            <div className="text-gray-400 text-xs">Top Speed</div>
-            <div className="text-white text-xl font-bold">{topSpeed.toFixed(1)} km/h</div>
-          </div>
-          <div>
-            <div className="text-gray-400 text-xs">Avg. Speed</div>
-            <div className="text-white text-xl font-bold">{avgSpeed.toFixed(1)} km/h</div>
-          </div>
-        </div>
-        
-        <div className="mb-4">
-          <h3 className="text-gray-400 text-xs font-semibold mb-1">SPEED ZONES</h3>
-          <ResponsiveContainer width="100%" height={120}>
-            <BarChart
-              layout="vertical"
-              data={[
-                { name: 'Running (14-25)', value: runningPercentage },
-                { name: 'Sprinting (25+)', value: sprintingPercentage },
-              ]}
-              margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis type="number" stroke="#666" unit="%" />
-              <YAxis dataKey="name" type="category" stroke="#666" tick={{ fontSize: 10 }} width={100} />
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: 'white' }} />
-              <Bar dataKey="value" fill="#3b82f6" barSize={20} radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        
-        <div>
-          <h3 className="text-gray-400 text-xs font-semibold mb-1">SPRINT ANALYSIS</h3>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="bg-gray-700 bg-opacity-30 p-2 rounded">
-              <div className="text-gray-400 text-xs">Total</div>
-              <div className="text-white font-medium">{sprintCount}</div>
-            </div>
-            <div className="bg-gray-700 bg-opacity-30 p-2 rounded">
-              <div className="text-gray-400 text-xs">Max Duration</div>
-              <div className="text-white font-medium">{maxSprintDuration.toFixed(1)}s</div>
-            </div>
-            <div className="bg-gray-700 bg-opacity-30 p-2 rounded">
-              <div className="text-gray-400 text-xs">Avg. Distance</div>
-              <div className="text-white font-medium">{avgSprintDistance}m</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DistanceCoverage({ matchStats, status, selectedPlayerId }) {
-  if (status !== 'completed' || !matchStats || !selectedPlayerId) {
-    return (
-      <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-        <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
-          <h2 className="text-gray-400 font-semibold">DISTANCE COVERAGE</h2>
-        </div>
-        <div className="p-4 text-gray-400 text-center">
-          {status === 'fetching' ? 'Fetching distance data...' : 'Distance data not available'}
-        </div>
-      </div>
-    );
-  }
-
-  const playerStats = matchStats.player_stats?.[selectedPlayerId] || {};
-  const totalDistance = playerStats.total_distance_m || 0; // Keep in meters
-  // Simulate high-intensity distance as not provided
-  const highIntensityDistance = 2400; // Placeholder in meters
-
-  // Simulate distance per 15 min if not available
-  const distanceData = [
-    { period: '0-15', distance: 1800 },
-    { period: '15-30', distance: 1900 },
-    { period: '30-45', distance: 1700 },
-    { period: '45-60', distance: 1400 },
-    { period: '60-75', distance: 1200 },
-    { period: '75-90', distance: 700 },
-  ];
-
-  return (
-    <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-      <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
-        <h2 className="text-gray-400 font-semibold">DISTANCE COVERAGE</h2>
-      </div>
-      <div className="p-4">
-        <div className="flex justify-between mb-4">
-          <div>
-            <div className="text-gray-400 text-xs">Total Distance</div>
-            <div className="text-white text-xl font-bold">{totalDistance.toFixed(0)} m</div>
-          </div>
-          <div>
-            <div className="text-gray-400 text-xs">High-Intensity Distance</div>
-            <div className="text-white text-xl font-bold">{highIntensityDistance.toFixed(0)} m</div>
-          </div>
-        </div>
-        
-        <div className="mb-4">
-          <h3 className="text-gray-400 text-xs font-semibold mb-1">DISTANCE PER 15 MIN</h3>
-          <ResponsiveContainer width="100%" height={100}>
-            <LineChart
-              data={distanceData}
-              margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis dataKey="period" stroke="#666" />
-              <YAxis stroke="#666" />
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: 'white' }} />
-              <Line type="monotone" dataKey="distance" stroke="#06d6a0" strokeWidth={2} dot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        
-        <div>
-          <h3 className="text-gray-400 text-xs font-semibold mb-1">COMPARISON</h3>
-          <div className="space-y-2">
-            <div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400">vs. Position Average</span>
-                <span className="text-green-400">+8%</span>
-              </div>
-              <div className="h-1 w-full bg-gray-600 rounded-full mt-1">
-                <div className="h-full bg-green-500 rounded-full" style={{ width: '68%' }}></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PassingAnalysis() {
-  const passingStats = [
-    { label: 'Passes', value: '27/35' },
-    { label: 'Accuracy', value: '77%' }
-  ];
-
-  return (
-    <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-      <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
-        <h2 className="text-gray-400 font-semibold">PASSING ANALYSIS</h2>
-      </div>
-      <div className="p-4">
-        <div className="flex justify-between mb-2">
-          {passingStats.map((stat, index) => (
-            <div key={index}>
-              <div className="text-gray-400 text-xs">{stat.label}</div>
-              <div className="text-white text-lg font-bold">{stat.value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function GoalsScored() {
-  return (
-    <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-      <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
-        <h2 className="text-gray-400 font-semibold">GOALS ANALYSIS</h2>
-      </div>
-      <div className="p-4">
-        <div className="flex flex-col items-center">
-          <div className="bg-blue-600 h-16 w-16 rounded-full flex items-center justify-center shadow-lg mb-3">
-            <span className="text-white text-2xl font-bold">1</span>
-          </div>
-          <div className="text-white text-lg font-semibold mb-1">GOAL SCORED</div>
         </div>
       </div>
     </div>
