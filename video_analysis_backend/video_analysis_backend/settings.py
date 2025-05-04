@@ -127,5 +127,5 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # EMAIL_FILE_PATH = '/path/to/email/directory'  # specify where to save emails
 
 # Admin email (this stays the same)
-ADMIN_EMAIL = 'hammadyasin630@gmail.com'
+ADMIN_EMAIL = 'admin@pitchvision.com'
 DEFAULT_FROM_EMAIL = 'Pitch Vision <noreply@pitchvision.com>'
