@@ -435,27 +435,6 @@ const ContactPage = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-16 bg-gradient-to-r from-indigo-900 to-purple-900">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to Transform Your Team's Performance?</h2>
-          <p className="text-gray-300 text-lg max-w-2xl mx-auto mb-8">
-            Schedule a demo today and see Pitch Vision in action
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-            <button className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium rounded-full shadow-lg transition">
-              Schedule a Demo
-              </button>
-            <button 
-              onClick={(e) => { e.preventDefault(); window.location.href = '/contact'; }}
-              className="px-8 py-3 bg-gray-800 hover:bg-gray-700 text-white font-medium rounded-full shadow-lg transition"
-            >
-              Contact Us
-            </button>
-          </div>
-        </div>
-      </section>
-
       {/* Footer Section */}
       <footer className="bg-gray-900 border-t border-gray-800">
         <div className="container mx-auto px-4 py-8">
@@ -481,9 +460,6 @@ const ContactPage = () => {
                   PITCH VISION
                 </span>
               </div>
-              <p className="text-gray-300 text-sm">
-                Empowering teams with cutting-edge performance analysis tools.
-              </p>
             </div>
 
             {/* Quick Links */}
@@ -496,29 +472,12 @@ const ContactPage = () => {
              
             </div>
 
-            {/* Newsletter */}
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-4">Subscribe to Our Newsletter</h3>
-              <form className="flex flex-col space-y-3">
-                <input 
-                  type="email" 
-                  placeholder="Your email address" 
-                  className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
-                />
-                <button 
-                  type="submit" 
-                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition shadow-lg"
-                >
-                  Subscribe
-                </button>
-              </form>
-            </div>
           </div>
 
           {/* Copyright */}
           <div className="border-t border-gray-800 mt-8 pt-8 text-center">
             <p className="text-gray-300 text-sm">
-              &copy; {new Date().getFullYear()} Pitch Vision. All rights reserved.
+              © {new Date().getFullYear()} Pitch Vision. All rights reserved.
             </p>
           </div>
         </div>
