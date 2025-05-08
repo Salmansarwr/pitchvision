@@ -17,6 +17,54 @@ from .projection import ProjectionAnnotator
 from .utils import clean_ball_path, smooth_positions, get_feet_pos
 from .json_writer import JsonWriter
 
+def is_shot_taken(ball_projection, prev_ball_projection, player_team, frame_idx):
+    """
+    Check if a shot is taken based on ball trajectory toward goal
+    
+    Args:
+        ball_projection: Current ball position
+        prev_ball_projection: Previous ball position
+        player_team: Team of the player closest to the ball
+        frame_idx: Current frame index
+        
+    Returns:
+        bool: True if shot detected
+    """
+    if ball_projection is None or prev_ball_projection is None:
+        return False
+    
+    x, y = ball_projection
+    prev_x, prev_y = prev_ball_projection
+    
+    # Calculate direction vector and velocity
+    dx = x - prev_x
+    dy = y - prev_y
+    velocity = np.sqrt(dx*dx + dy*dy)
+    
+    # Check if ball is moving toward goals with sufficient velocity
+    if velocity < 3:  # Minimum velocity threshold
+        return False
+        
+    # Left goal (Team B defends)
+    if player_team == "Team A" and dx < -2:  # Moving toward left goal
+        # Distance to left goal center
+        distance_to_goal = np.sqrt((x - 32)**2 + (y - 176)**2)
+        # Check if ball is heading toward goal within a reasonable angle and distance
+        if distance_to_goal < 150 and abs(dy) < abs(dx) * 0.8:  # Angle constraint
+            print(f"Frame {frame_idx}: Shot detected from Team A toward left goal")
+            return True
+    
+    # Right goal (Team A defends)
+    if player_team == "Team B" and dx > 2:  # Moving toward right goal
+        # Distance to right goal center
+        distance_to_goal = np.sqrt((x - 495)**2 + (y - 176)**2)
+        # Check if ball is heading toward goal within a reasonable angle and distance
+        if distance_to_goal < 150 and abs(dy) < abs(dx) * 0.8:  # Angle constraint
+            print(f"Frame {frame_idx}: Shot detected from Team B toward right goal")
+            return True
+    
+    return False
+
 def main_processing(
     input_video_path,
     output_dir,
@@ -147,7 +195,6 @@ def main_processing(
     )
     position_mapper = ObjectPositionMapper(top_down_keypoints=top_down_keypoints, alpha=0.9)
     projection_annotator = ProjectionAnnotator()
-
     # Verify input video
     if not os.path.exists(input_video_path):
         raise FileNotFoundError(f"Input video not found at {input_video_path}")
@@ -212,7 +259,7 @@ def main_processing(
     # Function to detect if a goal is scored
     def is_goal_scored(ball_projection, frame_idx):
         """
-        Check if ball projection is beyond goal box corners
+        Check if a goal is scored based on ball position
         
         Args:
             ball_projection: The projected ball position
@@ -222,19 +269,17 @@ def main_processing(
             Tuple[bool, str]: (goal detected, scoring team)
         """
         if ball_projection is None:
-            print(f"Frame {frame_idx}: No goal - Ball projection is None")
             return False, None
         x, y = ball_projection
         print(f"Frame {frame_idx}: Ball projection = ({x:.2f}, {y:.2f})")
         # Left goal (Team B scores): beyond [32, 122], [32, 229]
         if x < 32 and 122 <= y <= 229:
-            print(f"Frame {frame_idx}: Goal detected for Team A (Left goal)")
-            return True, "Team A"
+            print(f"Frame {frame_idx}: Goal detected for Team B (Left goal)")
+            return True, "Team B"
         # Right goal (Team A scores): beyond [495, 122], [495, 229]
         if x > 495 and 122 <= y <= 229:
-            print(f"Frame {frame_idx}: Goal detected for Team B (Right goal)")
-            return True, "Team B"
-        print(f"Frame {frame_idx}: No goal - Ball not beyond goal box corners")
+            print(f"Frame {frame_idx}: Goal detected for Team A (Right goal)")
+            return True, "Team A"
         return False, None
 
     # Main processing phase
@@ -246,7 +291,7 @@ def main_processing(
     cv2.VideoWriter_fourcc(*'avc1'),  # More universally supported codec
     fps,
     (canvas_width, canvas_height)
-)
+    )
 
     ball_positions = deque(maxlen=max_history)
     ball_confidences = deque(maxlen=max_history)
@@ -259,10 +304,13 @@ def main_processing(
     all_tracks = {}
     summary_data = {
         "passes": [],
+        "shots": [],  # Add shots array to track shots
         "possessions": [],
         "player_stats": {},
-        "team_stats": {"Team A": {"possession": 0, "passes": 0, "possession_percentage": 0},
-                      "Team B": {"possession": 0, "passes": 0, "possession_percentage": 0}},
+        "team_stats": {
+            "Team A": {"possession": 0, "passes": 0, "shots": 0, "possession_percentage": 0},
+            "Team B": {"possession": 0, "passes": 0, "shots": 0, "possession_percentage": 0}
+        },
         "goals": []
     }
 
@@ -272,6 +320,11 @@ def main_processing(
     goal_overlay_frames = 0
     display_goal_overlay = False
     goal_frame_counter = 0
+    
+    # Initialize shot detection variables
+    prev_ball_projection = None
+    last_shot_frame = -100  # To avoid detecting multiple shots for the same action
+    shot_cooldown = 0
 
     frame_idx = 0
     for _ in tqdm(range(true_frame_count), desc="Processing frames"):
@@ -293,8 +346,6 @@ def main_processing(
             detections.xyxy = detections.xyxy * np.array([player_scale_x, player_scale_y, player_scale_x, player_scale_y])
         if len(ball_detections) > 0:
             ball_detections.xyxy = ball_detections.xyxy * np.array([player_scale_x, player_scale_y, player_scale_x, player_scale_y])
-        if frame_idx % 100 == 0:
-            print(f"Frame {frame_idx}: Used {used_model} for detection, found {len(ball_detections)} balls, confidences: {[f'{c:.2f}' for c in ball_detections.confidence]}")
 
         # Detect and track keypoints
         kp_detections = kp_tracker.detect(frame_for_keypoint_detection)
@@ -304,16 +355,15 @@ def main_processing(
         for kp_id, kp_info in keypoint_history.get(frame_idx, {}).items():
             x, y = kp_info['coords']
             kp_info['coords'] = (x * kp_scale_x, y * kp_scale_y)
-        if frame_idx % 100 == 0:
-            print(f"Frame {frame_idx}: Detected {len(kp_tracks)} keypoints")
 
         # Update ball positions
         if len(ball_detections) > 0:
             valid_balls = ball_detections[ball_detections.confidence >= min_confidence_threshold]
             if len(valid_balls) > 0:
+                ball_detections = valid_balls
                 top_idx = valid_balls.confidence.argmax()
-                ball_detections = valid_balls[top_idx:top_idx+1]
-                ball_detections.xyxy = sv.pad_boxes(xyxy=ball_detections.xyxy, px=10)
+                ball_detections.xyxy = ball_detections.xyxy[top_idx:top_idx+1]
+                ball_detections.confidence = ball_detections.confidence[top_idx:top_idx+1]
                 x1, y1, x2, y2 = ball_detections.xyxy[0]
                 cx = int((x1 + x2) / 2)
                 cy = int((y1 + y2) / 2)
@@ -383,14 +433,13 @@ def main_processing(
         mapped_data = position_mapper.map(detection_data)
 
         # Update all_tracks with projections
-        for track_id, track_info in mapped_data.get('object', {}).items():
-            if 'projection' in track_info:
-                class_id = track_info.get('class_id', REFEREE_ID)
-                class_name = 'goalkeeper' if class_id == GOALKEEPER_ID else 'player' if class_id == PLAYER_ID else 'referee' if class_id == REFEREE_ID else 'ball'
-                if track_id in all_tracks[frame_idx]['object'][class_name]:
+        for class_name in ['player', 'goalkeeper', 'referee']:
+            for track_id, track_info in mapped_data.get('object', {}).items():
+                if 'projection' in track_info and track_id in all_tracks[frame_idx]['object'].get(class_name, {}):
                     all_tracks[frame_idx]['object'][class_name][track_id]['projection'] = track_info['projection']
 
         # Add ball projection
+        ball_projection = None
         if len(ball_positions) > 0 and ball_positions[-1] is not None:
             ball_pos = ball_positions[-1]
             ball_bbox = ball_detections.xyxy[0].tolist() if len(ball_detections) > 0 else [ball_pos[0]-5, ball_pos[1]-5, ball_pos[0]+5, ball_pos[1]+5]
@@ -399,25 +448,37 @@ def main_processing(
                 'object': {1: {'bbox': ball_bbox}}
             })
             if 'projection' in ball_mapped.get('object', {}).get(1, {}):
-                all_tracks[frame_idx]['object']['ball'][1]['projection'] = ball_mapped['object'][1]['projection']
+                ball_projection = ball_mapped['object'][1]['projection']
+                all_tracks[frame_idx]['object']['ball'][1]['projection'] = ball_projection
 
         # Goal detection with state machine
         goal_detected = False
         scoring_team = None
-        if 'ball' in all_tracks[frame_idx]['object'] and 1 in all_tracks[frame_idx]['object']['ball']:
-            ball_projection = all_tracks[frame_idx]['object']['ball'][1].get('projection')
+        if ball_projection is not None:
             goal_detected, scoring_team = is_goal_scored(ball_projection, frame_idx)
             if goal_detected:
                 if not goal_in_progress:
                     print(f"Goal scored at frame {frame_idx} for {scoring_team}!")
-                    summary_data["goals"].append({"frame": frame_idx, "team": scoring_team})
+                    summary_data["goals"].append({
+                        "frame": frame_idx,
+                        "team": scoring_team,
+                        "player_id": int(closest_player) if closest_player is not None else None
+                    })
                     event_filename = os.path.join(events_dir, f"goal_{scoring_team}_{frame_idx}.jpg")
                     cv2.imwrite(event_filename, frame)
                     print(f"Saved goal event frame to {event_filename}")
+                    
+                    # Mark most recent shot as on target if within last 150 frames
+                    recent_shots = [shot for shot in summary_data["shots"] 
+                                  if shot["team"] == scoring_team and frame_idx - shot["frame"] < 150]
+                    if recent_shots:
+                        recent_shots[-1]["on_target"] = True
+                        
                     goal_in_progress = True
                     display_goal_overlay = True
                     goal_overlay_frames = goal_overlay_duration
                     goal_frame_counter = 0
+                    
                 exit_counter = 0
             else:
                 if goal_in_progress:
@@ -425,16 +486,47 @@ def main_processing(
                     if exit_counter > max_exit_frames:
                         goal_in_progress = False
                         exit_counter = 0
+                        
+        # Shot detection
+        if shot_cooldown > 0:
+            shot_cooldown -= 1
+            
+        if ball_projection is not None and prev_ball_projection is not None and shot_cooldown == 0:
+            if current_possession_team in ["Team A", "Team B"] and closest_player is not None:
+                # Check if this is a shot
+                if is_shot_taken(ball_projection, prev_ball_projection, current_possession_team, frame_idx):
+                    # Calculate ball speed
+                    x1, y1 = ball_projection
+                    px1, py1 = prev_ball_projection
+                    ball_distance = np.sqrt((x1-px1)**2 + (y1-py1)**2)
+                    ball_speed_mps = ball_distance / time_per_frame / pixels_per_meter
+                    ball_speed_kmph = ball_speed_mps * 3.6
+                    
+                    # Record shot
+                    if frame_idx - last_shot_frame > 30:  # Avoid duplicate detections
+                        summary_data["shots"].append({
+                            "frame": frame_idx,
+                            "player_id": int(closest_player),
+                            "team": current_possession_team,
+                            "ball_speed_kmph": round(ball_speed_kmph, 2),
+                            "on_target": False
+                        })
+                        
+                        # Increment team shots counter
+                        summary_data["team_stats"][current_possession_team]["shots"] += 1
+                        
+                        # Save shot frame
+                        event_filename = os.path.join(events_dir, f"shot_{current_possession_team}_{frame_idx}.jpg")
+                        cv2.imwrite(event_filename, frame)
+                        print(f"Saved shot event frame to {event_filename}")
+                        
+                        last_shot_frame = frame_idx
+                        shot_cooldown = 30  # Prevent multiple detections of the same shot
+        
+        # Update previous ball position for the next frame
+        prev_ball_projection = ball_projection
 
-        # Manage goal overlay display
-        if display_goal_overlay and goal_overlay_frames > 0:
-            goal_overlay_frames -= 1
-            goal_frame_counter += 1
-            if goal_overlay_frames == 0:
-                display_goal_overlay = False
-                goal_frame_counter = 0
-
-        # Calculate player metrics
+        # Calculate player metrics and update
         player_speeds_for_frame = {}
         for i, tracker_id in enumerate(all_detections.tracker_id):
             if all_detections.class_id[i] in [BALL_CLASS_ID, REFEREE_ID]:
@@ -452,7 +544,7 @@ def main_processing(
                 distance_meters = distance_pixels / pixels_per_meter
                 player_distances[tracker_id] += distance_meters
                 speed_mps = distance_meters / time_per_frame
-                speed_kmph = min(speed_mps * 3.6, 50.0)
+                speed_kmph = min(speed_mps * 3.6, 50.0)  # Cap at 50 km/h to avoid outliers
                 player_speeds[tracker_id] = speed_kmph
                 player_speeds_for_frame[tracker_id] = speed_kmph
             else:
@@ -462,17 +554,21 @@ def main_processing(
         # Assign teams for player stats and possession
         for i, tracker_id in enumerate(all_detections.tracker_id):
             class_id = all_detections.class_id[i]
-            team_map[tracker_id] = 'Referee' if class_id == REFEREE_ID else 'Team A' if class_id == GOALKEEPER_ID or class_id == PLAYER_ID and i % 2 == 0 else 'Team B'
-            if str(tracker_id) not in summary_data["player_stats"] and team_map[tracker_id] != 'Referee':
-                summary_data["player_stats"][str(tracker_id)] = {
-                    "team": team_map[tracker_id],
-                    "total_distance_m": 0,
-                    "max_speed_kmph": 0,
-                    "avg_speed_kmph": 0,
-                    "speed_history": []
-                }
-            if team_map[tracker_id] != 'Referee':
-                player_stat = summary_data["player_stats"][str(tracker_id)]
+            team_id = all_detections.team_id[i] if hasattr(all_detections, 'team_id') else 2
+            team = 'Team A' if team_id == 0 else 'Team B' if team_id == 1 else 'Referee'
+            team_map[tracker_id] = team
+            
+            if team != 'Referee':
+                player_id = str(tracker_id)
+                if player_id not in summary_data["player_stats"]:
+                    summary_data["player_stats"][player_id] = {
+                        "team": team,
+                        "total_distance_m": 0,
+                        "max_speed_kmph": 0,
+                        "avg_speed_kmph": 0,
+                        "speed_history": []
+                    }
+                player_stat = summary_data["player_stats"][player_id]
                 player_stat["total_distance_m"] = round(player_distances[tracker_id], 2)
                 player_stat["max_speed_kmph"] = max(player_stat["max_speed_kmph"], round(player_speeds[tracker_id], 2))
                 player_stat["speed_history"].append(round(player_speeds[tracker_id], 2))
@@ -481,16 +577,15 @@ def main_processing(
         # Detect passes and calculate possession
         closest_player = None
         min_distance = float('inf')
-        speed_kmph = 0
         current_possession_team = None
 
-        if ball_positions and len(ball_positions) > 0 and ball_positions[-1] is not None:
+        if len(ball_positions) > 0 and ball_positions[-1] is not None:
             ball_point = np.array(ball_positions[-1], dtype=np.float32)
-            print(f"Frame {frame_idx}: Ball position = {ball_point}")
-
+            
             for i, box in enumerate(all_detections.xyxy):
-                if team_map.get(all_detections.tracker_id[i], 'Unknown') == 'Referee':
+                if all_detections.class_id[i] == REFEREE_ID:
                     continue
+                    
                 px = (box[0] + box[2]) / 2
                 py = (box[1] + box[3]) / 2
                 dist = np.linalg.norm(ball_point - np.array([px, py], dtype=np.float32))
@@ -499,48 +594,76 @@ def main_processing(
                     closest_player = all_detections.tracker_id[i]
 
             if closest_player is not None and min_distance < possession_distance_threshold:
-                print(f"Frame {frame_idx}: Closest player = {closest_player}, distance = {min_distance:.2f}")
                 current_possession_team = team_map.get(closest_player, "Unknown")
-
+                
+                # Mark player as having the ball
                 for class_name in ['player', 'goalkeeper']:
-                    if closest_player in all_tracks[frame_idx]['object'][class_name]:
+                    if closest_player in all_tracks[frame_idx]['object'].get(class_name, {}):
                         all_tracks[frame_idx]['object'][class_name][closest_player]['has_ball'] = True
 
+                # Update possession stats
                 if current_possession_team in ["Team A", "Team B"]:
                     summary_data["team_stats"][current_possession_team]["possession"] += 1
 
+                # Detect pass if there's a change in possession
                 if last_closest_player is not None and closest_player != last_closest_player:
-                    pass_count += 1
                     from_team = team_map.get(last_closest_player, "Unknown")
                     to_team = team_map.get(closest_player, "Unknown")
-
-                    summary_data["passes"].append({
-                        "frame": frame_idx,
-                        "from_player": int(last_closest_player),
-                        "to_player": int(closest_player),
-                        "from_team": from_team,
-                        "to_team": to_team,
-                        "ball_speed_kmph": round(speed_kmph, 2)
-                    })
-                    print(f"Frame {frame_idx}: Pass #{pass_count} from Player {last_closest_player} to Player {closest_player}")
-
-                    if from_team in ["Team A", "Team B"]:
+                    
+                    # Only count as a pass if both players are from the same team
+                    if from_team == to_team and from_team in ["Team A", "Team B"]:
+                        pass_count += 1
+                        
+                        # Calculate ball speed for the pass
+                        ball_speed_kmph = 0
+                        if len(ball_positions) >= 2 and ball_positions[-1] is not None and ball_positions[-2] is not None:
+                            p1 = ball_positions[-1]
+                            p2 = ball_positions[-2]
+                            distance_pixels = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+                            distance_meters = distance_pixels / pixels_per_meter
+                            speed_mps = distance_meters / time_per_frame
+                            ball_speed_kmph = speed_mps * 3.6
+                        
+                        # Record the pass
+                        summary_data["passes"].append({
+                            "frame": frame_idx,
+                            "from_player": int(last_closest_player),
+                            "to_player": int(closest_player),
+                            "from_team": from_team,
+                            "to_team": to_team,
+                            "ball_speed_kmph": round(ball_speed_kmph, 2)
+                        })
+                        
+                        # Update team pass stats
                         summary_data["team_stats"][from_team]["passes"] += 1
+                        
+                        print(f"Frame {frame_idx}: Pass #{pass_count} from Player {last_closest_player} to Player {closest_player}")
 
+                # Update last closest player
                 last_closest_player = closest_player
             else:
-                print(f"Frame {frame_idx}: No player within threshold (closest distance = {min_distance:.2f})")
-                last_closest_player = None
+                # No player close enough to the ball
                 current_possession_team = None
+                last_closest_player = None
         else:
-            last_closest_player = None
+            # No ball detected
             current_possession_team = None
+            last_closest_player = None
 
+        # Record possession for this frame
         if current_possession_team in ["Team A", "Team B"]:
             summary_data["possessions"].append({
                 "frame": frame_idx,
                 "team": current_possession_team
             })
+
+        # Manage goal overlay display
+        if display_goal_overlay and goal_overlay_frames > 0:
+            goal_overlay_frames -= 1
+            goal_frame_counter += 1
+            if goal_overlay_frames == 0:
+                display_goal_overlay = False
+                goal_frame_counter = 0
 
         # Save tracking data to JSON
         json_writer.write_object_tracks(all_tracks[frame_idx]['object'])
@@ -552,6 +675,7 @@ def main_processing(
             class_id = all_detections.class_id[i]
             if class_id == BALL_CLASS_ID:
                 continue
+                
             team_id = all_detections.team_id[i] if hasattr(all_detections, 'team_id') else 2
             if tracker_id in goalkeepers_detections.tracker_id:
                 obj_cls = 'goalkeeper'
@@ -562,9 +686,6 @@ def main_processing(
             else:
                 obj_cls = 'player'
                 color = team_colors[0] if team_id == 0 else team_colors[1] if team_id == 1 else (0, 0, 0)
-
-            if frame_idx % 100 == 0:
-                print(f"Frame {frame_idx}: Tracker ID {tracker_id}, obj_cls = {obj_cls}, team_id = {team_id}, color = {color}")
 
             xyxy = all_detections.xyxy[i]
             speed = player_speeds[tracker_id]
@@ -646,6 +767,7 @@ def main_processing(
         # Write output video
         out_video.write(combined_frame)
 
+        # Clean up
         del frame, frame_for_player_detection, frame_for_keypoint_detection, annotated, combined_frame, projection_frame_copy
         gc.collect()
         frame_idx += 1
@@ -668,10 +790,25 @@ def main_processing(
         top_distance = sorted(player_stats_filtered.items(), key=lambda x: x[1]["total_distance_m"], reverse=True)[:5]
         top_speed = sorted(player_stats_filtered.items(), key=lambda x: x[1]["max_speed_kmph"], reverse=True)[:5]
         top_avg_speed = sorted(player_stats_filtered.items(), key=lambda x: x[1]["avg_speed_kmph"], reverse=True)[:5]
+        
+        # Add shots to rankings
+        top_shooters = []
+        for player_id, _ in player_stats_filtered.items():
+            player_shots = [shot for shot in summary_data["shots"] if str(shot["player_id"]) == player_id]
+            if player_shots:
+                team = player_stats_filtered[player_id]["team"]
+                shots_count = len(player_shots)
+                on_target = len([shot for shot in player_shots if shot.get("on_target", False)])
+                top_shooters.append((player_id, shots_count, on_target, team))
+        
+        top_shooters.sort(key=lambda x: x[1], reverse=True)
+        top_shooters = top_shooters[:5]
+        
         summary_data["rankings"] = {
             "distance": [{"player_id": int(pid), "distance_m": stat["total_distance_m"], "team": stat["team"]} for pid, stat in top_distance],
             "max_speed": [{"player_id": int(pid), "speed_kmph": stat["max_speed_kmph"], "team": stat["team"]} for pid, stat in top_speed],
-            "avg_speed": [{"player_id": int(pid), "speed_kmph": stat["avg_speed_kmph"], "team": stat["team"]} for pid, stat in top_avg_speed]
+            "avg_speed": [{"player_id": int(pid), "speed_kmph": stat["avg_speed_kmph"], "team": stat["team"]} for pid, stat in top_avg_speed],
+            "top_shooters": [{"player_id": int(pid), "shots": shots, "on_target": on_target, "team": team} for pid, shots, on_target, team in top_shooters]
         }
 
     # Save match summary and tracks

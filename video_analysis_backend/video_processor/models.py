@@ -14,6 +14,9 @@ class Video(models.Model):
         choices=[('pending', 'Pending'), ('processing', 'Processing'), ('completed', 'Completed'), ('failed', 'Failed')],
         default='pending'
     )
+    
+    def __str__(self):
+        return f"{self.uploaded_at}"
 
 class EventFrame(models.Model):
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='event_frames')

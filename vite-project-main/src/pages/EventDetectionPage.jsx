@@ -88,9 +88,8 @@ function EventDetectionPage() {
           <EventVideoClips matchStats={matchStats} status={status} eventFrameUrls={videoData?.event_frame_urls || []} />
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
         <EventDistribution matchStats={matchStats} status={status} />
-        <EventFilters />
         <GoalAndPassingEvents matchStats={matchStats} status={status} />
       </div>
     </Layout>
@@ -102,6 +101,8 @@ function EventsSummary({ matchStats, status }) {
   const teamBGoals = matchStats?.goals?.filter(g => g.team === 'Team B').length || 0;
   const teamAPasses = matchStats?.team_stats?.['Team A']?.passes || 0;
   const teamBPasses = matchStats?.team_stats?.['Team B']?.passes || 0;
+  const teamAShots = matchStats?.team_stats?.['Team A']?.shots || 0;
+  const teamBShots = matchStats?.team_stats?.['Team B']?.shots || 0;
 
   if (status !== 'completed' || !matchStats) {
     return (
@@ -124,7 +125,7 @@ function EventsSummary({ matchStats, status }) {
       <div className="p-4">
         <div className="grid grid-cols-2 gap-4 mb-4">
           <EventStatCard type="Goals" teamA={teamAGoals} teamB={teamBGoals} />
-          <EventStatCard type="Shots" teamA="12" teamB="8" />
+          <EventStatCard type="Shots" teamA={teamAShots} teamB={teamBShots} />
         </div>
         <EventStatCard type="Passes" teamA={teamAPasses} teamB={teamBPasses} />
         
@@ -167,10 +168,15 @@ function EventDistribution({ matchStats, status }) {
   const teamAGoals = matchStats?.goals?.filter(g => g.team === 'Team A').length || 0;
   const teamBGoals = matchStats?.goals?.filter(g => g.team === 'Team B').length || 0;
   const totalGoals = teamAGoals + teamBGoals;
-  const totalPasses = (matchStats?.team_stats?.['Team A']?.passes || 0) + (matchStats?.team_stats?.['Team B']?.passes || 0);
+  const teamAPasses = matchStats?.team_stats?.['Team A']?.passes || 0;
+  const teamBPasses = matchStats?.team_stats?.['Team B']?.passes || 0;
+  const totalPasses = teamAPasses + teamBPasses;
+  const teamAShots = matchStats?.team_stats?.['Team A']?.shots || 0;
+  const teamBShots = matchStats?.team_stats?.['Team B']?.shots || 0;
+  const totalShots = teamAShots + teamBShots;
 
   const data = status === 'completed' && matchStats ? [
-    { name: 'Shots', value: 20 },
+    { name: 'Shots', value: totalShots },
     { name: 'Passes', value: totalPasses },
     { name: 'Goals', value: totalGoals },
   ] : [
@@ -281,20 +287,17 @@ function EventVideoClips({ matchStats, status, eventFrameUrls }) {
     let frameUrl = null;
     let logMessage = `Goal at frame ${goal.frame}: `;
 
-    // Primary: Match by frame_number
     if (eventFrameUrls.length > 0 && typeof eventFrameUrls[0] === 'object' && 'frame_number' in eventFrameUrls[0]) {
       const matchingFrame = eventFrameUrls.find(frame => frame.frame_number === goal.frame);
       frameUrl = matchingFrame ? matchingFrame.url : null;
       logMessage += frameUrl ? `Found frame ${frameUrl} (frame_number match)` : 'No frame_number match';
     }
 
-    // Fallback 1: Index-based (if no frame_number match)
     if (!frameUrl && eventFrameUrls[index]) {
       frameUrl = typeof eventFrameUrls[index] === 'object' ? eventFrameUrls[index].url : eventFrameUrls[index];
       logMessage += `Using index-based frame ${frameUrl}`;
     }
 
-    // Fallback 2: URL parsing with flexible regex
     if (!frameUrl) {
       const matchingFrame = eventFrameUrls.find(item => {
         const url = typeof item === 'object' ? item.url : item;
@@ -315,7 +318,6 @@ function EventVideoClips({ matchStats, status, eventFrameUrls }) {
     };
   }) || [];
 
-  // Dynamic grid columns based on number of clips
   const gridCols = goalClips.length === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2';
 
   return (
@@ -352,7 +354,6 @@ function VideoClip({ time, type, team, player, frameUrl, clipCount }) {
   const teamColor = team === 'Team A' ? 'bg-blue-600' : 'bg-pink-600';
   const [imageError, setImageError] = useState(null);
 
-  // Dynamic height based on clip count
   const baseHeight = clipCount === 1 ? 'h-96' : clipCount === 2 ? 'h-48' : 'h-32';
   const imageHeight = clipCount === 1 ? 'h-80' : clipCount === 2 ? 'h-36' : 'h-24';
 
@@ -385,96 +386,6 @@ function VideoClip({ time, type, team, player, frameUrl, clipCount }) {
           <span className="text-gray-500">No event frame available</span>
         )}
       </div>
-    </div>
-  );
-}
-
-function EventFilters() {
-  const [filters, setFilters] = useState({
-    goals: true,
-    shots: true,
-    passes: false,
-    teamA: true,
-    teamB: true
-  });
-  
-  const toggleFilter = (name) => {
-    setFilters({
-      ...filters,
-      [name]: !filters[name]
-    });
-  };
-  
-  return (
-    <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden h-full">
-      <div className="px-4 py-3 bg-gray-700 bg-opacity-50">
-        <h2 className="text-gray-400 font-semibold">EVENT FILTERS</h2>
-      </div>
-      <div className="p-4">
-        <div>
-          <h3 className="text-gray-400 text-sm font-semibold mb-3">EVENT TYPES</h3>
-          <div className="space-y-3">
-            <FilterToggle 
-              label="Goals" 
-              active={filters.goals} 
-              onChange={() => toggleFilter('goals')} 
-            />
-            <FilterToggle 
-              label="Shots" 
-              active={filters.shots} 
-              onChange={() => toggleFilter('shots')} 
-            />
-            <FilterToggle 
-              label="Passes" 
-              active={filters.passes} 
-              onChange={() => toggleFilter('passes')} 
-            />
-          </div>
-        </div>
-        
-        <div className="mt-6">
-          <h3 className="text-gray-400 text-sm font-semibold mb-3">TEAMS</h3>
-          <div className="space-y-3">
-            <FilterToggle 
-              label="Team A" 
-              active={filters.teamA} 
-              onChange={() => toggleFilter('teamA')} 
-              color="bg-blue-600"
-            />
-            <FilterToggle 
-              label="Team B" 
-              active={filters.teamB} 
-              onChange={() => toggleFilter('teamB')} 
-              color="bg-pink-600"
-            />
-          </div>
-        </div>
-        
-        <div className="mt-6">
-          <button className="w-full py-3 bg-indigo-600 text-white rounded-md shadow-lg hover:bg-indigo-700 transition">
-            Apply Filters
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FilterToggle({ label, active, onChange, color = 'bg-indigo-600' }) {
-  return (
-    <div className="flex items-center justify-between bg-gray-700 bg-opacity-30 p-3 rounded-lg">
-      <div className="flex items-center">
-        <div className={`h-3 w-3 rounded-full mr-2 ${color}`}></div>
-        <span className="text-gray-300">{label}</span>
-      </div>
-      <button 
-        className={`w-12 h-6 rounded-full flex items-center transition-colors duration-200 ${active ? 'bg-green-600' : 'bg-gray-600'}`}
-        onClick={onChange}
-      >
-        <div 
-          className={`w-5 h-5 rounded-full bg-white shadow transform transition-transform duration-200 ${active ? 'translate-x-6' : 'translate-x-1'}`} 
-        />
-      </button>
     </div>
   );
 }
