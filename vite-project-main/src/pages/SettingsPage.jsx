@@ -1,16 +1,54 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { UserContext } from '../context/UserContext';
 import Layout from '../components/shared/Layout';
+
+// Custom Alert Popup Component
+function AlertPopup({ type, message, onClose }) {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, 3000); // Auto-close after 3 seconds
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-gray-800 rounded-lg shadow-lg p-6 max-w-sm w-full">
+        <div
+          className={`px-4 py-2 rounded-t-lg ${
+            type === 'success' ? 'bg-green-600' : 'bg-red-600'
+          }`}
+        >
+          <h3 className="text-lg font-semibold text-white">
+            {type === 'success' ? 'Success' : 'Error'}
+          </h3>
+        </div>
+        <div className="p-4">
+          <p className="text-white text-sm">{message}</p>
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SettingsPage() {
   const { user, profile, setUser, setProfile } = useContext(UserContext);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [alert, setAlert] = useState({ show: false, type: '', message: '' });
 
   const [formData, setFormData] = useState({
     firstName: user?.first_name || '',
     lastName: user?.last_name || '',
     phoneNumber: profile?.phone_number || '',
-    experienceLevel: profile?.experience_level || 'Beginner', // Default to valid value
+    experienceLevel: profile?.experience_level || 'Beginner',
   });
 
   const handleFormChange = (e) => {
@@ -19,30 +57,49 @@ function SettingsPage() {
   };
 
   const validatePhoneNumber = (phone) => {
-    // Matches 7-15 characters, allowing digits, spaces, +, -
     return /^[\d\s+-]{7,15}$/.test(phone);
   };
 
   const handleUpdateProfile = async () => {
     // Client-side validation
     if (!formData.firstName.trim()) {
-      alert('First name is required');
+      setAlert({
+        show: true,
+        type: 'error',
+        message: 'First name is required',
+      });
       return;
     }
     if (!formData.lastName.trim()) {
-      alert('Last name is required');
+      setAlert({
+        show: true,
+        type: 'error',
+        message: 'Last name is required',
+      });
       return;
     }
     if (!formData.phoneNumber.trim()) {
-      alert('Phone number is required');
+      setAlert({
+        show: true,
+        type: 'error',
+        message: 'Phone number is required',
+      });
       return;
     }
     if (!validatePhoneNumber(formData.phoneNumber)) {
-      alert('Phone number must be 7-15 characters and contain only digits, spaces, +, or -');
+      setAlert({
+        show: true,
+        type: 'error',
+        message: 'Phone number must be 7-15 characters and contain only digits, spaces, +, or -',
+      });
       return;
     }
     if (!formData.experienceLevel || !['Beginner', 'Enthusiast', 'Pro'].includes(formData.experienceLevel)) {
-      alert('Please select a valid experience level');
+      setAlert({
+        show: true,
+        type: 'error',
+        message: 'Please select a valid experience level',
+      });
       return;
     }
 
@@ -51,7 +108,7 @@ function SettingsPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
         body: JSON.stringify({
           first_name: formData.firstName.trim(),
@@ -61,13 +118,11 @@ function SettingsPage() {
         }),
       });
 
-      // Log response for debugging
       console.log('Response status:', response.status);
       const data = await response.json();
       console.log('Response data:', data);
 
       if (response.ok) {
-        // Update UserContext with new data
         setUser({
           first_name: data.user.first_name,
           last_name: data.user.last_name,
@@ -79,14 +134,26 @@ function SettingsPage() {
           experience_level: data.user.experience_level,
           created_at: data.user.created_at,
         });
-        alert('Profile updated successfully!');
+        setAlert({
+          show: true,
+          type: 'success',
+          message: 'Profile updated successfully!',
+        });
         setIsPopupOpen(false);
       } else {
-        alert(`Failed to update profile: ${data.message || 'Unknown error'}`);
+        setAlert({
+          show: true,
+          type: 'error',
+          message: `Failed to update profile: ${data.message || 'Unknown error'}`,
+        });
       }
     } catch (error) {
       console.error('Error updating profile:', error);
-      alert('An error occurred while updating profile: Network or server issue');
+      setAlert({
+        show: true,
+        type: 'error',
+        message: 'An error occurred while updating profile: Network or server issue',
+      });
     }
   };
 
@@ -307,6 +374,15 @@ function SettingsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Alert Popup */}
+      {alert.show && (
+        <AlertPopup
+          type={alert.type}
+          message={alert.message}
+          onClose={() => setAlert({ show: false, type: '', message: '' })}
+        />
       )}
     </Layout>
   );

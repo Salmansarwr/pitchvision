@@ -1,5 +1,5 @@
-import React, { useState } from "react";
 import Navbar from '../components/shared/Navbar';
+import React from "react";
 
 // Utility Components
 const BenefitCard = ({ icon, title, description, color }) => {
@@ -23,12 +23,9 @@ const TestimonialCard = ({ quote, author, title }) => {
         </svg>
         <p className="text-gray-300 italic">"{quote}"</p>
       </div>
-      <div className="flex items-center">
-        <div className="h-10 w-10 rounded-full bg-gray-600 mr-3"></div>
-        <div>
-          <h4 className="text-white font-medium">{author}</h4>
-          <p className="text-gray-400 text-sm">{title}</p>
-        </div>
+      <div>
+        <h4 className="text-white font-medium">{author}</h4>
+        <p className="text-gray-400 text-sm">{title}</p>
       </div>
     </div>
   );
@@ -36,8 +33,6 @@ const TestimonialCard = ({ quote, author, title }) => {
 
 // Main Landing Page Component
 const LandingPage = () => {
-  const [pricingMode, setPricingMode] = useState("monthly");
-
   // Feature Data
   const features = [
     {
@@ -119,27 +114,6 @@ const LandingPage = () => {
     }
   ];
 
-  const pricingPlans = [
-    {
-      name: "Starter",
-      description: "Perfect for small clubs and academies.",
-      monthlyPrice: "99",
-      annualPrice: "999"
-    },
-    {
-      name: "Pro",
-      description: "Ideal for professional teams.",
-      monthlyPrice: "199",
-      annualPrice: "1999"
-    },
-    {
-      name: "Enterprise",
-      description: "For leagues and organizations.",
-      monthlyPrice: "Custom",
-      annualPrice: "Custom"
-    }
-  ];
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col">
       {/* Header Section */}
@@ -167,7 +141,7 @@ const LandingPage = () => {
           <nav className="hidden md:flex space-x-12">
             <a href="#features" className="text-gray-300 hover:text-white transition text-lg">Features</a>
             <a href="#benefits" className="text-gray-300 hover:text-white transition text-lg">Benefits</a>
-            <a href="#pricing" className="text-gray-300 hover:text-white transition text-lg">Pricing</a>
+            <a href="#testimonials" className="text-gray-300 hover:text-white transition text-lg">Testimonials</a>
           </nav>
           <div className="flex items-center space-x-4">
             <a
@@ -177,8 +151,7 @@ const LandingPage = () => {
               Sign In
             </a>
             <a
-              href="#"
-              onClick={(e) => { e.preventDefault(); window.location.href = '/signup'; }}
+              href="/signup"
               className="px-6 py-2 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white transition shadow-lg"
             >
               Get Started
@@ -204,8 +177,7 @@ const LandingPage = () => {
             </p>
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
               <a
-                href="#"
-                onClick={(e) => { e.preventDefault(); window.location.href = '/register'; }}
+                href="/signup"
                 className="px-6 py-3 text-center rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium transition shadow-lg"
               >
                 Start Free Trial
@@ -286,7 +258,7 @@ const LandingPage = () => {
                   </div>
                   
                   {/* Defenders */}
-                  <div className="absolute h-5 w-5 bg-red-600 border-2 border-white rounded-full top-[15%] left-[80%] flex items-center justify-center shadow-lg">
+                  <div className="absolute h daran-5 w-5 bg-red-600 border-2 border-white rounded-full top-[15%] left-[80%] flex items-center justify-center shadow-lg">
                     <span className="text-white text-xs font-bold">2</span>
                   </div>
                   <div className="absolute h-5 w-5 bg-red-600 border-2 border-white rounded-full top-[38%] left-[80%] flex items-center justify-center shadow-lg">
@@ -340,8 +312,6 @@ const LandingPage = () => {
               <div className="absolute top-4 right-4 px-2 py-1 bg-gray-800 bg-opacity-70 rounded text-xs text-cyan-400">
                 LIVE TRACKING
               </div>
-              
-              {/* Text overlay removed */}
             </div>
             
             {/* Stats overlay */}
@@ -447,15 +417,12 @@ const LandingPage = () => {
           <div className="mt-16 bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700">
             <h3 className="text-xl text-white font-semibold mb-4">See It In Action</h3>
             <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
-              {/* Here you would upload your own GIF */}
               <img 
                 src="/images/demo.gif" 
                 alt="Pitch Vision demo showing player tracking and analysis" 
                 className="w-full h-full object-cover"
               />
             </div>
-            
-            {/* Optional caption or explanation */}
             <p className="text-gray-400 text-sm mt-3 text-center">
               Watch how Pitch Vision tracks player movements and analyzes performance metrics in real-time.
             </p>
@@ -463,7 +430,7 @@ const LandingPage = () => {
         </section>
 
         {/* Testimonials Section */}
-        <section className="container mx-auto px-4 py-20">
+        <section id="testimonials" className="container mx-auto px-4 py-20">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">What Our Users Say</h2>
             <p className="text-gray-300 text-lg max-w-2xl mx-auto">
@@ -481,49 +448,6 @@ const LandingPage = () => {
             ))}
           </div>
         </section>
-
-        {/* Pricing Section */}
-        <section id="pricing" className="container mx-auto px-4 py-20">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Pricing Plans</h2>
-            <p className="text-gray-300 text-lg max-w-2xl mx-auto">
-              Choose the plan that fits your team's needs.
-            </p>
-            <div className="mt-4">
-              <button
-                onClick={() => setPricingMode("monthly")}
-                className={`px-4 py-2 rounded-l-full ${
-                  pricingMode === "monthly" ? "bg-indigo-600 text-white" : "bg-gray-700 text-gray-300"
-                }`}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setPricingMode("annual")}
-                className={`px-4 py-2 rounded-r-full ${
-                  pricingMode === "annual" ? "bg-indigo-600 text-white" : "bg-gray-700 text-gray-300"
-                }`}
-              >
-                Annual
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {pricingPlans.map((plan, index) => (
-              <div key={index} className="bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700">
-                <h3 className="text-xl font-semibold mb-4">{plan.name}</h3>
-                <p className="text-gray-300 mb-6">{plan.description}</p>
-                <div className="text-4xl font-bold mb-6">
-                  ${pricingMode === "monthly" ? plan.monthlyPrice : plan.annualPrice}
-                  <span className="text-lg text-gray-400">/{pricingMode === "monthly" ? "mo" : "yr"}</span>
-                </div>
-                <button className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full hover:from-indigo-700 hover:to-purple-700 transition">
-                  Get Started
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
         
         {/* CTA Section */}
         <section className="py-16 bg-gradient-to-r from-indigo-900 to-purple-900">
@@ -533,9 +457,12 @@ const LandingPage = () => {
               Join hundreds of teams already using Pitch Vision to gain a competitive edge
             </p>
             <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-              <button className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium rounded-full shadow-lg transition">
+              <a
+                href="/signup"
+                className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium rounded-full shadow-lg transition"
+              >
                 Start Free Trial
-              </button>
+              </a>
               <a 
                 href="/contact" 
                 className="px-8 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-full shadow-lg transition"
@@ -615,22 +542,12 @@ const LandingPage = () => {
           
           <div className="border-t border-gray-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center">
             <div className="text-gray-400 mb-4 md:mb-0">
-              &copy; {new Date().getFullYear()} Pitch Vision. All rights reserved.
+              © {new Date().getFullYear()} Pitch Vision. All rights reserved.
             </div>
             <div className="flex space-x-6">
-              <a href="#" className="text-gray-400 hover:text-white transition">
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M24 4.557a9.83 9.83 0 01-2.828.775 4.932 4.932 0 002.165-2.724 9.864 9.864 0 01-3.127 1.195 4.916 4.916 0 00-8.39 4.49A13.978 13.978 0 011.671 3.15a4.93 4.93 0 001.523 6.574 4.903 4.903 0 01-2.229-.616v.061a4.926 4.926 0 003.95 4.827 4.996 4.996 0 01-2.224.084 4.918 4.918 0 004.59 3.413A9.863 9.863 0 010 19.542a13.94 13.94 0 007.548 2.212c9.057 0 14.009-7.5 14.009-14.01 0-.21-.005-.422-.014-.632A10.039 10.039 0 0024 4.557z" />
-                </svg>
-              </a>
-              <a href="#" className="text-gray-400 hover:text-white transition">
+              <a href="https://github.com/Salmansarwr/pitchvision" target="_blank" rel="noopener noreferrer"className="text-gray-400 hover:text-white transition">
                 <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.6.11.793-.26.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.31.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-                </svg>
-              </a>
-              <a href="#" className="text-gray-400 hover:text-white transition">
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M22.675 0H1.325C.593 0 0 .593 0 1.325v21.351C0 23.407.593 24 1.325 24H12.82v-9.294H9.692v-3.622h3.128V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116c.73 0 1.323-.593 1.323-1.325V1.325C24 .593 23.407 0 22.675 0z" />
                 </svg>
               </a>
             </div>

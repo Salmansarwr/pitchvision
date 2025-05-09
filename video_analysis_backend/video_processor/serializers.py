@@ -1,8 +1,8 @@
-# video_processor/serializers.py
+# video_analysis_backend/video_processor/serializers.py
 import logging
 from rest_framework import serializers
 from django.conf import settings
-from .models import Video, EventFrame
+from .models import Video, EventFrame, ContactSubmission  # Add ContactSubmission import
 
 logger = logging.getLogger(__name__)
 
@@ -63,3 +63,13 @@ class VideoSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         base_url = getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000')
         return request.build_absolute_uri(file_field.url) if request else f"{base_url}{file_field.url}"
+
+# Add ContactSubmissionSerializer
+class ContactSubmissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactSubmission
+        fields = ['id', 'first_name', 'last_name', 'email', 'phone', 'message', 'submitted_at']
+        read_only_fields = ['id', 'submitted_at']
+
+    def create(self, validated_data):
+        return ContactSubmission.objects.create(**validated_data)
